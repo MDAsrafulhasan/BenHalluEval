@@ -2,6 +2,9 @@
 
 ## Status and scope
 
+> [!NOTE]
+> For the latest evaluation pipeline status, blocker analysis, benchmarked overhead, and optimization roadmap, see the follow-up [Evaluation Pipeline & Optimization Audit Report](AUDIT_REPORT.md).
+
 **Review findings, not a repair release.** No Python source, original notebook, raw input, or preservation-baseline entry was changed. This report and the regenerated derived catalog are the only intentional workspace changes from this review.
 
 The review combined executable offline checks of active code, static checks across the entire Python/notebook inventory, and focused source inspection of reference runtime paths. It is not a claim that every branch of every imported module has been exercised.

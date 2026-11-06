@@ -12,8 +12,8 @@
 | Run a reproducible experiment and prepare thesis evidence | [Workflow](docs/WORKFLOW.md) · [Experiment template](experiments/TEMPLATE.md) |
 | Read the CUET_AL_Masaar project | [Original README](references/IUT_DATATHON_HALLU-main/README.md) · [Actual inference notebook](references/IUT_DATATHON_HALLU-main/CUET_AL_Masaar_inference_notebook.ipynb) |
 | Read the Huntrix project | [Original README](references/IUTCSFESTDATATHON-main/README.md) · [v91 runbook](references/IUTCSFESTDATATHON-main/release/phase2-v91-public-submission/RUNBOOK.md) |
-| Run the thesis evaluation suite | [Evaluation guide](evaluation/README.md) |
-| Check verified bugs and limitations before real inference or reuse | [Code review findings](docs/CODE_REVIEW.md) |
+| Run the thesis evaluation suite | [Evaluation guide](evaluation/README.md) · [Pipeline & optimization audit](docs/AUDIT_REPORT.md) |
+| Check verified bugs and limitations before real inference or reuse | [Code review](docs/CODE_REVIEW.md) · [Audit report](docs/AUDIT_REPORT.md) |
 | Check that every original file survived the reorganization | `python tools/workspace.py verify` |
 
 ## Workspace layout
@@ -43,7 +43,7 @@ Thesis/
 
 ## First checks
 
-Read the [code review findings](docs/CODE_REVIEW.md) before real-model inference. The current tests pass, but the review identified uncovered transport, parser, checkpoint-identity and reporting issues; original reference code also has documented defects. The report distinguishes observed reproductions from static findings.
+Read the [code review findings](docs/CODE_REVIEW.md) and [evaluation pipeline & optimization audit](docs/AUDIT_REPORT.md) before real-model inference. The active pipeline review identifies current blocker status, transport/parsing hardening, and runtime benchmark results. Original reference code also has documented defects.
 
 Run these commands **from the `Thesis` directory** using your evaluation Python environment:
 
