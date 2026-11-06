@@ -1690,5 +1690,145 @@ def test_r2_structured_overrides_signed_and_indivisible_fractions():
     assert numbers('3.5 and -2/3') == [Fraction(7, 2), Fraction(-2, 3)]
 
 
+def test_select_sample_stratified_proportions():
+    from evaluation.eval import select_sample
+
+    full = make_splits.generate_mock_benhallu(seed=42)
+    # 120 rows
+    frame = full.iloc[:120].copy()
+    n_a = (frame['track'] == 'Track_A').sum()
+    n_b = (frame['track'] == 'Track_B').sum()
+    assert n_a > 0 and n_b > 0 and n_a + n_b == 120
+
+    # Sample 60 rows using stratified sampling
+    sample_60 = select_sample(frame, sample_size=60, strategy='stratified', seed=42)
+    assert len(sample_60) == 60
+    s_a = (sample_60['track'] == 'Track_A').sum()
+    s_b = (sample_60['track'] == 'Track_B').sum()
+    assert s_a + s_b == 60
+    # Both tracks must be preserved proportionally
+    assert abs((s_a / 60) - (n_a / 120)) < 0.05
+
+    # Sample 100 rows using stratified sampling
+    sample_100 = select_sample(frame, sample_size=100, strategy='stratified', seed=42)
+    assert len(sample_100) == 100
+    assert (sample_100['track'] == 'Track_A').sum() > 0
+    assert (sample_100['track'] == 'Track_B').sum() > 0
+
+    # Invalid strategy raises ValueError
+    with pytest.raises(ValueError, match='Unknown sampling strategy'):
+        select_sample(frame, sample_size=10, strategy='invalid_strategy')
+
+
+def test_select_sample_head_and_random():
+    from evaluation.eval import select_sample
+
+    full = make_splits.generate_mock_benhallu(seed=42)
+    frame = full.iloc[:120].copy()
+
+    # Head strategy takes first N rows
+    head_30 = select_sample(frame, sample_size=30, strategy='head')
+    assert len(head_30) == 30
+    assert list(head_30['id']) == list(frame['id'].iloc[:30])
+
+    # Random strategy samples N rows with deterministic seed
+    rand_a = select_sample(frame, sample_size=30, strategy='random', seed=123)
+    rand_b = select_sample(frame, sample_size=30, strategy='random', seed=123)
+    assert len(rand_a) == 30
+    assert list(rand_a['id']) == list(rand_b['id'])
+
+    # Oversized sample returns full frame
+    assert len(select_sample(frame, sample_size=200)) == len(frame)
+    assert len(select_sample(frame, sample_size=None)) == len(frame)
+
+
+def test_openrouter_judge_transport_headers_and_params(monkeypatch):
+    import evaluation.judge_transport as jt
+
+    captured_requests = []
+
+    def mock_urlopen(request, timeout):
+        captured_requests.append(request)
+        class MockResp:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def read(self, n):
+                data = json.dumps({
+                    'choices': [{'message': {'content': '<verdict>yes</verdict>'}, 'finish_reason': 'stop'}],
+                    'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15},
+                    'model': 'meta-llama/llama-3.3-70b-instruct:free',
+                }).encode('utf-8')
+                return data if not hasattr(self, '_read_done') else b''
+        resp = MockResp()
+        resp._read_done = False
+        def read_chunk(limit):
+            if not resp._read_done:
+                resp._read_done = True
+                return json.dumps({
+                    'choices': [{'message': {'content': '<verdict>yes</verdict>'}, 'finish_reason': 'stop'}],
+                    'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15},
+                    'model': 'meta-llama/llama-3.3-70b-instruct:free',
+                }).encode('utf-8')
+            return b''
+        resp.read = read_chunk
+        return resp
+
+    monkeypatch.setattr(urllib.request, 'urlopen', mock_urlopen)
+    monkeypatch.setenv('TEST_OR_KEY', 'sk-or-test-123')
+
+    extra_headers = {'HTTP-Referer': 'https://test.example', 'X-Title': 'TestApp'}
+    judge = jt.OpenAICompatibleJudge(
+        model_name='meta-llama/llama-3.3-70b-instruct:free',
+        base_url='https://openrouter.ai/api/v1',
+        api_key_env='TEST_OR_KEY',
+        extra_headers=extra_headers,
+        temperature=0.2,
+        max_tokens=512,
+    )
+
+    res = judge('Test prompt')
+    assert res.text == '<verdict>yes</verdict>'
+    assert len(captured_requests) == 1
+    req = captured_requests[0]
+
+    # Verify request headers
+    assert req.headers.get('Authorization') == 'Bearer sk-or-test-123'
+    assert req.headers.get('Http-referer') == 'https://test.example'
+    assert req.headers.get('X-title') == 'TestApp'
+
+    # Verify request payload parameters
+    payload = json.loads(req.data.decode('utf-8'))
+    assert payload['model'] == 'meta-llama/llama-3.3-70b-instruct:free'
+    assert payload['temperature'] == 0.2
+    assert payload['max_tokens'] == 512
+
+
+def test_openrouter_cli_sampling_and_defaults(tmp_path, monkeypatch):
+    splits = tmp_path / 'splits'
+    outputs = tmp_path / 'outputs'
+    results = tmp_path / 'results'
+    _run_cli('make_splits.py', [
+        '--generate_mock_data', '--seed', 42,
+        '--output_dir', splits,
+    ], tmp_path)
+
+    # CLI evaluation with openrouter backend and mock judge
+    # (using always_yes mock to avoid network calls)
+    _run_cli('eval.py', [
+        '--input_csv', splits / SPLIT_FILES['micro'],
+        '--backend', 'always_yes', '--model_name', 'meta-llama/llama-3.3-70b-instruct:free',
+        '--sample_size', '100', '--sample_strategy', 'stratified',
+        '--output_dir', outputs, '--results_dir', results,
+    ], tmp_path)
+
+    # Checkpoint was generated for sample of 100 rows
+    checkpoints = list(outputs.glob('*sample100.jsonl'))
+    assert len(checkpoints) == 1
+    rows = _read_jsonl(checkpoints[0])
+    assert len(rows) == 100
+
+
 if __name__ == '__main__':
     raise SystemExit(pytest.main([str(Path(__file__).resolve()), *sys.argv[1:]]))

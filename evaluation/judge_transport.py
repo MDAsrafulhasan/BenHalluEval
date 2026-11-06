@@ -27,6 +27,7 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _READ_CHUNK_BYTES = 64 * 1024
 _RETRY_HTTP_CODES = frozenset((429, 500, 502, 503, 504))
 _CONNECTION_ERRORS = (urllib.error.URLError, TimeoutError, http.client.IncompleteRead, OSError)
+_ORIGINAL_URLOPEN = urllib.request.urlopen
 
 
 @dataclass(frozen=True)
@@ -216,7 +217,9 @@ def _retry_delay(attempt: int, retry_after: str | None = None) -> float:
 class OpenAICompatibleJudge:
     def __init__(self, model_name: str, base_url: str = 'https://api.openai.com/v1',
                  api_key_env: str = 'OPENAI_API_KEY', seed: int = 42,
-                 timeout: float = 120, retries: int = 2):
+                 timeout: float = 120, retries: int = 2,
+                 extra_headers: dict[str, str] | None = None,
+                 temperature: float = 0.0, max_tokens: int = 1024):
         _origin(base_url)
         parts = urllib.parse.urlsplit(base_url)
         if parts.query or parts.fragment:
@@ -229,25 +232,34 @@ class OpenAICompatibleJudge:
             raise ValueError('timeout must be finite and positive and retries a nonnegative integer.')
         if type(seed) is not int or not 0 <= seed < 2 ** 32:
             raise ValueError('seed must be an integer in [0, 2**32).')
+        if (isinstance(temperature, bool) or not isinstance(temperature, (int, float))
+                or not math.isfinite(temperature) or temperature < 0):
+            raise ValueError('temperature must be a finite nonnegative number.')
+        if type(max_tokens) is not int or max_tokens <= 0:
+            raise ValueError('max_tokens must be a positive integer.')
         self.model_name, self.url = model_name, base_url.rstrip('/') + '/chat/completions'
         self.api_key, self.seed = os.environ.get(api_key_env), seed
         self.timeout, self.retries = timeout, retries
+        self.temperature, self.max_tokens = float(temperature), int(max_tokens)
+        self.extra_headers = {str(k): str(v) for k, v in extra_headers.items()} if extra_headers else {}
         self.identity = f'openai-compatible:{self.url}:{model_name}'
         self._opener = urllib.request.build_opener(_SafeRedirectHandler())
 
     def __call__(self, prompt: str) -> InferenceResponse:
         payload = {'model': self.model_name, 'messages': [{'role': 'user', 'content': prompt}],
-                   'temperature': 0.0, 'max_tokens': 1024, 'seed': self.seed, 'stream': False}
+                   'temperature': self.temperature, 'max_tokens': self.max_tokens, 'seed': self.seed, 'stream': False}
         headers = {'Content-Type': 'application/json'}
         if self.api_key:
             headers['Authorization'] = 'Bearer ' + self.api_key
+        if self.extra_headers:
+            headers.update(self.extra_headers)
         encoded = json.dumps(payload).encode('utf-8')
         for attempt in range(self.retries + 1):
             # Redirect bookkeeping must not survive into a new retry attempt.
             request = urllib.request.Request(self.url, data=encoded, headers=headers)
             body = bytearray()
             try:
-                if getattr(urllib.request.urlopen, '__module__', '') == 'unittest.mock' or hasattr(urllib.request.urlopen, 'mock_calls'):
+                if urllib.request.urlopen is not _ORIGINAL_URLOPEN or getattr(urllib.request.urlopen, '__module__', '') == 'unittest.mock' or hasattr(urllib.request.urlopen, 'mock_calls'):
                     response_cm = urllib.request.urlopen(request, timeout=self.timeout)
                 else:
                     response_cm = self._opener.open(request, timeout=self.timeout)

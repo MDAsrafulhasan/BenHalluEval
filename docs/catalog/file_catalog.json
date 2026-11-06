@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-11-06T20:38:28.318545+00:00",
+  "generated_utc": "2026-11-06T20:56:56.163453+00:00",
   "notes": [
     "Metadata only: no code execution, notebook outputs, or data row values.",
     "Titles use filenames or the first Markdown heading, not README claims; slide counts, versions, and other README drift are not inferred.",
@@ -295,8 +295,8 @@
       "group": "Thesis_evaluation",
       "kind": "sourcecode",
       "title": "eval.py",
-      "bytes": 41677,
-      "sha256": "b725ee1da9bad11fed22f58f66019eafaca69c212cee2a198cbadd40a2a3ce3e",
+      "bytes": 47426,
+      "sha256": "1f7373b06f32de25bd18dd0cabae374140f4ab2e671d67cd0b8e1d0679f9a0b2",
       "symbols": [
         "_array",
         "_weights",
@@ -306,6 +306,7 @@
         "compute_critical_bias_sensitivity",
         "_normalize",
         "_repetition_collapse",
+        "select_sample",
         "build_prompt",
         "MockJudge",
         "_json",
@@ -351,8 +352,8 @@
       "group": "Thesis_evaluation",
       "kind": "sourcecode",
       "title": "judge_transport.py",
-      "bytes": 13040,
-      "sha256": "6bb66848153bfa41a4585b83f2b841902314c8e0daf97126a4fc7c7a7a84186d",
+      "bytes": 13919,
+      "sha256": "d2ada5904f001c9c7ab9de9c7227b761c8537d5b66dec94bc0b084755b40d817",
       "symbols": [
         "InferenceResponse",
         "_origin",
@@ -414,12 +415,35 @@
       ]
     },
     {
+      "path": "evaluation/openrouter_config.py",
+      "group": "Thesis_evaluation",
+      "kind": "sourcecode",
+      "title": "openrouter_config.py",
+      "bytes": 5315,
+      "sha256": "73a398d93190951875f703defd65b1578d09878dd976d727060b42a7a0c2d7ef",
+      "symbols": [
+        "get_openrouter_judge",
+        "sample_dataset"
+      ]
+    },
+    {
+      "path": "evaluation/run_openrouter.py",
+      "group": "Thesis_evaluation",
+      "kind": "sourcecode",
+      "title": "run_openrouter.py",
+      "bytes": 7711,
+      "sha256": "c51b359228506f5d583fffcba22cb45dbd3eff6b584a0ef9e700ddbae661f348",
+      "symbols": [
+        "main"
+      ]
+    },
+    {
       "path": "evaluation/test_pipeline.py",
       "group": "Thesis_evaluation",
       "kind": "test",
       "title": "test_pipeline.py",
-      "bytes": 74089,
-      "sha256": "227813d97e46b5c010a91ce8afe78e4cbf90494fdfd3dc8022c287fe0d1e6bd7",
+      "bytes": 79608,
+      "sha256": "af93e549016852b5fd573bdb7e4eb9da088fd0f9cb106e06bcdb816222b0dc5c",
       "symbols": [
         "benhallu_full",
         "dialect_full",
@@ -509,7 +533,11 @@
         "test_a11_ranking_stability_undefined_on_missing_tasks",
         "test_a12_load_dataset_provenance_preservation",
         "test_a13_duplicate_headers_rejected_before_mangling",
-        "test_r2_structured_overrides_signed_and_indivisible_fractions"
+        "test_r2_structured_overrides_signed_and_indivisible_fractions",
+        "test_select_sample_stratified_proportions",
+        "test_select_sample_head_and_random",
+        "test_openrouter_judge_transport_headers_and_params",
+        "test_openrouter_cli_sampling_and_defaults"
       ]
     },
     {

@@ -142,6 +142,43 @@ def _repetition_collapse(text: str) -> bool:
     return _has_repetition(words)
 
 
+def select_sample(frame: pd.DataFrame, sample_size: int | None = None,
+                  strategy: str = 'stratified', seed: int = 42) -> pd.DataFrame:
+    """Select a deterministic subset of rows from frame based on sample_size and strategy.
+
+    Strategies:
+    - 'stratified': Proportional sampling across 'track' (or 'dialect'), ensuring both
+      Track A and Track B are non-empty so BHS remains mathematically defined.
+    - 'random': Uniform pseudorandom sample with the provided seed.
+    - 'head': Takes the first sample_size rows directly.
+    """
+    if sample_size is None or sample_size <= 0 or sample_size >= len(frame):
+        return frame.copy()
+    if strategy == 'head':
+        return frame.iloc[:sample_size].copy()
+    if strategy == 'random':
+        return frame.sample(n=sample_size, random_state=seed).sort_index().copy()
+    if strategy == 'stratified':
+        strat_col = 'track' if 'track' in frame.columns else ('dialect' if 'dialect' in frame.columns else None)
+        if strat_col and frame[strat_col].nunique() > 1:
+            counts = frame[strat_col].value_counts(normalize=True)
+            subsets = []
+            remaining = sample_size
+            categories = list(counts.index)
+            for i, cat in enumerate(categories):
+                frac = counts[cat]
+                if i == len(categories) - 1:
+                    n_cat = remaining
+                else:
+                    n_cat = max(1, min(remaining - (len(categories) - 1 - i), round(sample_size * frac)))
+                remaining -= n_cat
+                cat_df = frame[frame[strat_col] == cat]
+                subsets.append(cat_df.sample(n=min(n_cat, len(cat_df)), random_state=seed))
+            return pd.concat(subsets).sort_index().copy()
+        return frame.sample(n=sample_size, random_state=seed).sort_index().copy()
+    raise ValueError(f"Unknown sampling strategy: {strategy}. Expected 'stratified', 'random', or 'head'.")
+
+
 def build_prompt(row: dict, mode: str, prompt_mode: str) -> str:
     if prompt_mode not in ('zero_shot', 'cot') or mode not in ('benhallu', 'dialect'):
         raise ValueError('Unknown mode or prompt_mode.')
@@ -345,7 +382,9 @@ def _validate_record(record: dict, config: dict, config_hash: str) -> None:
 def run_evaluation(frame: pd.DataFrame, judge: Callable[[str], InferenceResponse], *,
                    model_name: str, prompt_mode: str, split_name: str,
                    mode: str = 'benhallu', output_dir: str | Path = 'outputs',
-                   seed: int = SEED, backend_identity: str | None = None) -> list[dict]:
+                   seed: int = SEED, backend_identity: str | None = None,
+                   sample_size: int | None = None, sample_strategy: str = 'stratified',
+                   sample_seed: int | None = None) -> list[dict]:
     if mode not in ('benhallu', 'dialect') or prompt_mode not in ('zero_shot', 'cot'):
         raise ValueError('Unknown mode or prompt mode.')
     if not isinstance(seed, int) or isinstance(seed, bool) or not 0 <= seed < 2 ** 32:
@@ -353,6 +392,9 @@ def run_evaluation(frame: pd.DataFrame, judge: Callable[[str], InferenceResponse
     if isinstance(judge, OpenAICompatibleJudge) and (judge.seed != seed or judge.model_name != model_name):
         raise ValueError('Judge seed/model must match the recorded evaluation seed/model.')
     frame = (validate_benhallu(frame) if mode == 'benhallu' else validate_dialect(frame))
+    if sample_size is not None and sample_size > 0:
+        s_seed = seed if sample_seed is None else sample_seed
+        frame = select_sample(frame, sample_size=sample_size, strategy=sample_strategy, seed=s_seed)
     if frame.empty:
         raise ValueError('Cannot evaluate an empty split.')
     columns = BENHALLU_COLUMNS if mode == 'benhallu' else DIALECT_COLUMNS
@@ -367,10 +409,12 @@ def run_evaluation(frame: pd.DataFrame, judge: Callable[[str], InferenceResponse
             'backend_identity parameter to prevent silent checkpoint sharing across differing judges.'
         )
     source_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    temp = getattr(judge, 'temperature', TEMPERATURE)
+    m_tokens = getattr(judge, 'max_tokens', MAX_TOKENS)
     config = {'protocol_version': PROTOCOL_VERSION, 'source_sha256': source_hash,
               'dataset_sha256': _digest(dataset), 'expected_rows': len(dataset),
               'model_name': model_name, 'prompt_mode': prompt_mode, 'split_name': split_name,
-              'mode': mode, 'temperature': TEMPERATURE, 'max_tokens': MAX_TOKENS, 'seed': seed,
+              'mode': mode, 'temperature': temp, 'max_tokens': m_tokens, 'seed': seed,
               'backend_identity': judge_identity,
               'dependencies': {'python': platform.python_version(), 'numpy': np.__version__,
                                'pandas': pd.__version__, 'sklearn': sklearn.__version__}}
@@ -661,17 +705,25 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--input_csv', type=Path)
     parser.add_argument('--mode', choices=('benhallu', 'dialect'), default='benhallu')
-    parser.add_argument('--model_name')
-    parser.add_argument('--backend', choices=('openai', 'always_yes', 'always_no', 'mock_score', 'mock_collapse'), default='openai')
+    parser.add_argument('--model_name', default=None)
+    parser.add_argument('--backend', choices=('openai', 'openrouter', 'always_yes', 'always_no', 'mock_score', 'mock_collapse'),
+                        default=os.getenv('BENHALLU_BACKEND', 'openai'))
     parser.add_argument('--prompt_mode', choices=('zero_shot', 'cot', 'both'), default='zero_shot')
     parser.add_argument('--output_dir', type=Path, default=Path('outputs'))
     parser.add_argument('--results_dir', type=Path, default=Path('results'))
     parser.add_argument('--split_name', help='Defaults to input CSV stem.')
     parser.add_argument('--seed', type=int, default=SEED)
-    parser.add_argument('--base_url', default='https://api.openai.com/v1')
-    parser.add_argument('--api_key_env', default='OPENAI_API_KEY')
+    parser.add_argument('--base_url', default=None)
+    parser.add_argument('--api_key_env', default=None)
     parser.add_argument('--timeout', type=float, default=120)
     parser.add_argument('--retries', type=int, default=2)
+    parser.add_argument('--temperature', type=float, default=float(os.getenv('BENHALLU_TEMPERATURE', '0.0')))
+    parser.add_argument('--max_tokens', type=int, default=int(os.getenv('BENHALLU_MAX_TOKENS', '1024')))
+    parser.add_argument('--sample_size', type=int, default=int(os.getenv('BENHALLU_SAMPLE_SIZE', '0')) if os.getenv('BENHALLU_SAMPLE_SIZE') else None,
+                        help='Number of rows to sample (e.g. 100). Default is 100 when backend=openrouter, or full split.')
+    parser.add_argument('--sample_strategy', choices=('stratified', 'random', 'head'),
+                        default=os.getenv('BENHALLU_SAMPLE_STRATEGY', 'stratified'))
+    parser.add_argument('--sample_seed', type=int, default=int(os.getenv('BENHALLU_SAMPLE_SEED', '42')))
     parser.add_argument('--w_a', type=float, default=.5)
     parser.add_argument('--w_b', type=float, default=.5)
     parser.add_argument('--cbs_anchor', choices=('Tangail', 'Standard_Bengali'), default='Tangail')
@@ -681,22 +733,70 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _weights(args.w_a, args.w_b)
         if not args.reports_only:
-            if args.input_csv is None or not args.model_name:
-                parser.error('--input_csv and --model_name are required unless --reports_only.')
-            if args.backend in ('always_yes', 'always_no') and args.mode != 'benhallu':
-                parser.error('Binary mock judges require --mode benhallu.')
-            if args.backend == 'mock_score' and args.mode != 'dialect':
-                parser.error('mock_score requires --mode dialect.')
-            if args.backend == 'openai':
-                LOG.warning('Real inference sends dataset content to %s and may incur API costs.', args.base_url)
-                judge = OpenAICompatibleJudge(args.model_name, args.base_url, args.api_key_env, args.seed, args.timeout, args.retries)
+            backend = args.backend
+            if backend == 'openrouter':
+                base_url = args.base_url or os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
+                api_key_env = args.api_key_env or os.getenv('BENHALLU_API_KEY_ENV', 'OPENROUTER_API_KEY')
+                model_name = args.model_name or os.getenv('BENHALLU_MODEL', os.getenv('OPENROUTER_MODEL', 'meta-llama/llama-3.3-70b-instruct:free'))
+                sample_size = args.sample_size if args.sample_size is not None else int(os.getenv('BENHALLU_SAMPLE_SIZE', '100'))
+                extra_headers = {
+                    'HTTP-Referer': os.getenv('OPENROUTER_HTTP_REFERER', 'https://github.com/MDAsrafulhasan/BenHalluEval'),
+                    'X-Title': os.getenv('OPENROUTER_APP_TITLE', 'BenHalluEval'),
+                }
+            elif backend == 'openai':
+                base_url = args.base_url or 'https://api.openai.com/v1'
+                api_key_env = args.api_key_env or 'OPENAI_API_KEY'
+                model_name = args.model_name
+                sample_size = args.sample_size
+                extra_headers = None
             else:
-                LOG.warning('Using synthetic test backend %s; results are NOT scientific evidence.', args.backend)
-                judge = MockJudge(args.backend)
+                base_url, api_key_env, extra_headers = None, None, None
+                model_name = args.model_name
+                sample_size = args.sample_size
+
+            if args.input_csv is None or not model_name:
+                parser.error('--input_csv and --model_name are required unless --reports_only.')
+            if backend in ('always_yes', 'always_no') and args.mode != 'benhallu':
+                parser.error('Binary mock judges require --mode benhallu.')
+            if backend == 'mock_score' and args.mode != 'dialect':
+                parser.error('mock_score requires --mode dialect.')
+            if backend in ('openai', 'openrouter'):
+                LOG.warning('Real inference sends dataset content to %s and may incur API costs / rate limits.', base_url)
+                if not os.environ.get(api_key_env):
+                    LOG.warning(
+                        "API key environment variable '%s' is not set. Inference requests will fail unless exported.",
+                        api_key_env
+                    )
+                judge = OpenAICompatibleJudge(
+                    model_name=model_name,
+                    base_url=base_url,
+                    api_key_env=api_key_env,
+                    seed=args.seed,
+                    timeout=args.timeout,
+                    retries=args.retries,
+                    extra_headers=extra_headers,
+                    temperature=args.temperature,
+                    max_tokens=args.max_tokens,
+                )
+            else:
+                LOG.warning('Using synthetic test backend %s; results are NOT scientific evidence.', backend)
+                judge = MockJudge(backend)
             frame = load_dataset(args.input_csv, args.mode)
+            total_rows = len(frame)
+            if sample_size and 0 < sample_size < total_rows:
+                LOG.info('Sampling %s/%s rows using strategy=%s seed=%s',
+                         sample_size, total_rows, args.sample_strategy, args.sample_seed)
+                frame = select_sample(frame, sample_size=sample_size,
+                                      strategy=args.sample_strategy, seed=args.sample_seed)
+
+            default_split = args.input_csv.stem
+            if sample_size and 0 < sample_size < total_rows:
+                default_split = f'{default_split}_sample{sample_size}'
+            split_name = args.split_name or default_split
+
             for prompt_mode in (('zero_shot', 'cot') if args.prompt_mode == 'both' else (args.prompt_mode,)):
-                run_evaluation(frame, judge, model_name=args.model_name, prompt_mode=prompt_mode,
-                               split_name=args.split_name or args.input_csv.stem, mode=args.mode,
+                run_evaluation(frame, judge, model_name=model_name, prompt_mode=prompt_mode,
+                               split_name=split_name, mode=args.mode,
                                output_dir=args.output_dir, seed=args.seed)
         reports = generate_reports(args.output_dir, args.results_dir, args.w_a, args.w_b, args.cbs_anchor)
         LOG.info('Wrote %s CSV/Markdown reports to %s.', len(reports), args.results_dir)

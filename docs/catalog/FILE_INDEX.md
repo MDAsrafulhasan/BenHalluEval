@@ -1,8 +1,8 @@
 # Workspace file index
 
-Generated UTC: 2026-11-06T20:38:28.318545+00:00
+Generated UTC: 2026-11-06T20:56:56.163453+00:00
 
-Files: 336; bytes: 41084380.
+Files: 338; bytes: 41109553.
 
 - Metadata only: no code execution, notebook outputs, or data row values.
 - Titles use filenames or the first Markdown heading, not README claims; slide counts, versions, and other README drift are not inferred.
@@ -366,14 +366,16 @@ Files: 336; bytes: 41084380.
 
 ### sourcecode
 
-- [evaluation/eval.py](../../evaluation/eval.py) — eval.py; 41677 bytes
+- [evaluation/eval.py](../../evaluation/eval.py) — eval.py; 47426 bytes
 - [evaluation/judge_parsing.py](../../evaluation/judge_parsing.py) — judge_parsing.py; 10821 bytes
-- [evaluation/judge_transport.py](../../evaluation/judge_transport.py) — judge_transport.py; 13040 bytes
+- [evaluation/judge_transport.py](../../evaluation/judge_transport.py) — judge_transport.py; 13919 bytes
 - [evaluation/make_splits.py](../../evaluation/make_splits.py) — make_splits.py; 54629 bytes
+- [evaluation/openrouter_config.py](../../evaluation/openrouter_config.py) — openrouter_config.py; 5315 bytes
+- [evaluation/run_openrouter.py](../../evaluation/run_openrouter.py) — run_openrouter.py; 7711 bytes
 
 ### test
 
-- [evaluation/test_pipeline.py](../../evaluation/test_pipeline.py) — test_pipeline.py; 74089 bytes
+- [evaluation/test_pipeline.py](../../evaluation/test_pipeline.py) — test_pipeline.py; 79608 bytes
 
 ## Workspace
 
