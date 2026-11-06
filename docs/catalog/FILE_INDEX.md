@@ -1,8 +1,8 @@
 # Workspace file index
 
-Generated UTC: 2026-11-06T13:51:15.786287+00:00
+Generated UTC: 2026-11-06T19:39:30.511030+00:00
 
-Files: 321; bytes: 40702800.
+Files: 333; bytes: 41069421.
 
 - Metadata only: no code execution, notebook outputs, or data row values.
 - Titles use filenames or the first Markdown heading, not README claims; slide counts, versions, and other README drift are not inferred.
@@ -76,8 +76,8 @@ Files: 321; bytes: 40702800.
 
 ### data
 
-- [references/IUTCSFESTDATATHON-main/bengali-hallucination/sample submission.csv](../../references/IUTCSFESTDATATHON-main/bengali-hallucination/sample%20submission.csv) — sample submission.csv; 19029 bytes
-- [references/IUTCSFESTDATATHON-main/bengali-hallucination/test set.csv](../../references/IUTCSFESTDATATHON-main/bengali-hallucination/test%20set.csv) — test set.csv; 2329947 bytes
+- [references/IUTCSFESTDATATHON-main/bengali-hallucination/sample submission.csv](../../references/IUTCSFESTDATATHON-main/bengali-hallucination/sample%20submission.csv) — sample submission.csv; 16513 bytes
+- [references/IUTCSFESTDATATHON-main/bengali-hallucination/test set.csv](../../references/IUTCSFESTDATATHON-main/bengali-hallucination/test%20set.csv) — test set.csv; 2327431 bytes
 
 ### documentation
 
@@ -362,56 +362,74 @@ Files: 321; bytes: 40702800.
 
 ### documentation
 
-- [evaluation/README.md](../../evaluation/README.md) — Active thesis evaluation suite; 4712 bytes
+- [evaluation/README.md](../../evaluation/README.md) — Active thesis evaluation suite; 4964 bytes
 
 ### sourcecode
 
-- [evaluation/eval.py](../../evaluation/eval.py) — eval.py; 48129 bytes
-- [evaluation/make_splits.py](../../evaluation/make_splits.py) — make_splits.py; 47760 bytes
+- [evaluation/eval.py](../../evaluation/eval.py) — eval.py; 47301 bytes
+- [evaluation/judge_parsing.py](../../evaluation/judge_parsing.py) — judge_parsing.py; 10821 bytes
+- [evaluation/judge_transport.py](../../evaluation/judge_transport.py) — judge_transport.py; 12746 bytes
+- [evaluation/make_splits.py](../../evaluation/make_splits.py) — make_splits.py; 51032 bytes
 
 ### test
 
-- [evaluation/test_pipeline.py](../../evaluation/test_pipeline.py) — test_pipeline.py; 63701 bytes
+- [evaluation/test_pipeline.py](../../evaluation/test_pipeline.py) — test_pipeline.py; 62263 bytes
 
 ## Workspace
 
 ### config
 
-- [.gitignore](../../.gitignore) — .gitignore; 713 bytes
-- [environment/requirements-evaluation.txt](../../environment/requirements-evaluation.txt) — requirements-evaluation.txt; 255 bytes
-- [pytest.ini](../../pytest.ini) — pytest.ini; 140 bytes
+- [.gitignore](../../.gitignore) — .gitignore; 680 bytes
+- [environment/requirements-evaluation.txt](../../environment/requirements-evaluation.txt) — requirements-evaluation.txt; 248 bytes
+- [pytest.ini](../../pytest.ini) — pytest.ini; 136 bytes
 
 ### documentation
 
-- [AGENTS.md](../../AGENTS.md) — Thesis workspace instructions; 4335 bytes
-- [README.md](../../README.md) — Bengali LLM Hallucination Detection & Dialectal Robustness; 7071 bytes
-- [data/README.md](../../data/README.md) — Data lifecycle; 780 bytes
-- [data/raw/dialect/README.md](../../data/raw/dialect/README.md) — Real dialect benchmark not yet supplied; 835 bytes
-- [data/splits/README.md](../../data/splits/README.md) — Generated evaluation subsets; 811 bytes
-- [docs/CODE_REVIEW.md](../../docs/CODE_REVIEW.md) — Code review: evaluation, workspace tools, and preserved research; 18430 bytes
-- [docs/DATA_GUIDE.md](../../docs/DATA_GUIDE.md) — Data guide and integration boundaries; 7994 bytes
-- [docs/ORGANIZATION.md](../../docs/ORGANIZATION.md) — Workspace organization record; 3646 bytes
-- [docs/RESEARCH_REUSE.md](../../docs/RESEARCH_REUSE.md) — Research reuse map: Huntrix and CUET_AL_Masaar; 19233 bytes
-- [docs/WORKFLOW.md](../../docs/WORKFLOW.md) — Reproducible thesis workflow; 8865 bytes
-- [environment/README.md](../../environment/README.md) — Evaluation environment; 2015 bytes
-- [experiments/README.md](../../experiments/README.md) — Experiment records; 1041 bytes
-- [experiments/TEMPLATE.md](../../experiments/TEMPLATE.md) — Experiment record; 3317 bytes
-- [outputs/README.md](../../outputs/README.md) — Raw inference outputs; 957 bytes
-- [references/README.md](../../references/README.md) — Preserved research references; 2070 bytes
-- [results/README.md](../../results/README.md) — Derived evaluation reports; 734 bytes
-- [tools/README.md](../../tools/README.md) — Workspace navigation and integrity tools; 2227 bytes
-- [writing/README.md](../../writing/README.md) — Thesis writing and publication assets; 1150 bytes
-- [writing/chapters/README.md](../../writing/chapters/README.md) — Original thesis chapters; 1038 bytes
-- [writing/tables/README.md](../../writing/tables/README.md) — Reviewed thesis tables; 480 bytes
+- [AGENTS.md](../../AGENTS.md) — Thesis workspace instructions; 4299 bytes
+- [README.md](../../README.md) — Bengali LLM Hallucination Detection & Dialectal Robustness; 7065 bytes
+- [data/README.md](../../data/README.md) — Data lifecycle; 771 bytes
+- [data/raw/dialect/README.md](../../data/raw/dialect/README.md) — Real dialect benchmark not yet supplied; 826 bytes
+- [data/splits/README.md](../../data/splits/README.md) — Generated evaluation subsets; 799 bytes
+- [docs/AUDIT_REPORT.md](../../docs/AUDIT_REPORT.md) — Evaluation Pipeline and Optimization Audit Report; 16366 bytes
+- [docs/CODE_REVIEW.md](../../docs/CODE_REVIEW.md) — Code review: evaluation, workspace tools, and preserved research; 18396 bytes
+- [docs/DATA_GUIDE.md](../../docs/DATA_GUIDE.md) — Data guide and integration boundaries; 7893 bytes
+- [docs/ORGANIZATION.md](../../docs/ORGANIZATION.md) — Workspace organization record; 3593 bytes
+- [docs/RESEARCH_REUSE.md](../../docs/RESEARCH_REUSE.md) — Research reuse map: Huntrix and CUET_AL_Masaar; 19050 bytes
+- [docs/WORKFLOW.md](../../docs/WORKFLOW.md) — Reproducible thesis workflow; 8748 bytes
+- [environment/README.md](../../environment/README.md) — Evaluation environment; 1983 bytes
+- [experiments/README.md](../../experiments/README.md) — Experiment records; 1028 bytes
+- [experiments/TEMPLATE.md](../../experiments/TEMPLATE.md) — Experiment record; 3250 bytes
+- [outputs/README.md](../../outputs/README.md) — Raw inference outputs; 948 bytes
+- [references/README.md](../../references/README.md) — Preserved research references; 2050 bytes
+- [results/README.md](../../results/README.md) — Derived evaluation reports; 727 bytes
+- [tools/README.md](../../tools/README.md) — Workspace navigation and integrity tools; 2202 bytes
+- [writing/README.md](../../writing/README.md) — Thesis writing and publication assets; 1137 bytes
+- [writing/chapters/README.md](../../writing/chapters/README.md) — Original thesis chapters; 1025 bytes
+- [writing/tables/README.md](../../writing/tables/README.md) — Reviewed thesis tables; 475 bytes
 
 ### figure
 
-- [writing/figures/README.md](../../writing/figures/README.md) — Reviewed thesis figures; 505 bytes
+- [writing/figures/README.md](../../writing/figures/README.md) — Reviewed thesis figures; 500 bytes
+
+### license
+
+- [experiments/reference_repairs/cuet/LICENSE](../../experiments/reference_repairs/cuet/LICENSE) — LICENSE; 1070 bytes
+- [experiments/reference_repairs/huntrix/LICENSE](../../experiments/reference_repairs/huntrix/LICENSE) — LICENSE; 1069 bytes
+
+### notebook
+
+- [experiments/reference_repairs/cuet/CUET_AL_Masaar_inference_notebook.repaired.ipynb](../../experiments/reference_repairs/cuet/CUET_AL_Masaar_inference_notebook.repaired.ipynb) — CUET_AL_Masaar_inference_notebook.repaired.ipynb; 102806 bytes
+- [experiments/reference_repairs/huntrix/best_gemma12_qat_submission.repaired.ipynb](../../experiments/reference_repairs/huntrix/best_gemma12_qat_submission.repaired.ipynb) — Bengali Hallucination Detection - Gemma 12B QAT GGUF Submission; 16476 bytes
 
 ### sourcecode
 
-- [tools/workspace.py](../../tools/workspace.py) — workspace.py; 14993 bytes
+- [experiments/pipeline_hardening/original_evaluation/eval.py](../../experiments/pipeline_hardening/original_evaluation/eval.py) — eval.py; 47301 bytes
+- [experiments/pipeline_hardening/original_evaluation/make_splits.py](../../experiments/pipeline_hardening/original_evaluation/make_splits.py) — make_splits.py; 46925 bytes
+- [experiments/reference_repairs/huntrix/datathon_utils.py](../../experiments/reference_repairs/huntrix/datathon_utils.py) — datathon_utils.py; 7693 bytes
+- [experiments/reference_repairs/huntrix/structured_overrides.py](../../experiments/reference_repairs/huntrix/structured_overrides.py) — structured_overrides.py; 34011 bytes
+- [tools/workspace.py](../../tools/workspace.py) — workspace.py; 18156 bytes
 
 ### test
 
-- [tools/test_workspace.py](../../tools/test_workspace.py) — test_workspace.py; 8924 bytes
+- [experiments/pipeline_hardening/original_evaluation/test_pipeline.py](../../experiments/pipeline_hardening/original_evaluation/test_pipeline.py) — test_pipeline.py; 62263 bytes
+- [tools/test_workspace.py](../../tools/test_workspace.py) — test_workspace.py; 17422 bytes

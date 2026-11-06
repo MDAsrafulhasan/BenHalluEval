@@ -6,6 +6,9 @@ These are the original three evaluation scripts, moved together without changing
 - [eval.py](eval.py): metrics, parsing/collapse detection, locked decoding, durable/resumable inference, reports.
 - [test_pipeline.py](test_pipeline.py): standalone pytest verification, offline fixtures, HTTP mocks, checkpoint and report checks.
 
+> [!IMPORTANT]
+> **Audit Status:** Before running evaluation benchmarks, review the [Evaluation & Optimization Audit Report](../docs/AUDIT_REPORT.md) for known execution blockers (`_load_provenance`), unintegrated hardening modules (`judge_parsing.py`, `judge_transport.py`), and runtime optimization recommendations.
+
 Run commands below **from the workspace root**, not from an imported repository. Script docstrings containing short `python eval.py`/`python make_splits.py` examples predate this relocation; use the root-relative paths shown here. Default output paths are relative to your current working directory.
 
 ## Verify
