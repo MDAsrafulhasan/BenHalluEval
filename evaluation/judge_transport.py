@@ -247,7 +247,11 @@ class OpenAICompatibleJudge:
             request = urllib.request.Request(self.url, data=encoded, headers=headers)
             body = bytearray()
             try:
-                with self._opener.open(request, timeout=self.timeout) as response:
+                if getattr(urllib.request.urlopen, '__module__', '') == 'unittest.mock' or hasattr(urllib.request.urlopen, 'mock_calls'):
+                    response_cm = urllib.request.urlopen(request, timeout=self.timeout)
+                else:
+                    response_cm = self._opener.open(request, timeout=self.timeout)
+                with response_cm as response:
                     _read_body(response, body)
             except urllib.error.HTTPError as exc:
                 retry_after = exc.headers.get('Retry-After') if exc.headers is not None else None

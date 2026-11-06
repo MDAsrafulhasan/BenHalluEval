@@ -1434,5 +1434,261 @@ def test_splits_rare_stratum_omission_is_actionable_error(
     assert not (destination / 'manifest.json').exists()
 
 
+# Audit regression tests (A1 - A13 & reference repairs) ----------------------
+
+
+def test_a1_safe_redirect_handler_blocks_cross_origin_and_downgrade():
+    import judge_transport as jt
+    handler = jt._SafeRedirectHandler()
+
+    # Valid origin resolution
+    assert jt._origin('https://api.openai.com/v1') == ('https', 'api.openai.com', 443)
+    assert jt._origin('http://localhost:8080') == ('http', 'localhost', 8080)
+
+    # Rejects invalid URLs
+    with pytest.raises(ValueError):
+        jt._origin('ftp://invalid.com')
+    with pytest.raises(ValueError):
+        jt._origin('https://user:pass@invalid.com')
+
+    # Test cross-origin redirect rejection
+    req = urllib.request.Request('https://api.openai.com/v1/chat/completions')
+    with pytest.raises(RuntimeError, match='cross-origin destination'):
+        handler.redirect_request(req, None, 307, 'Temporary Redirect', {}, 'https://other.com/v1')
+
+    # Test HTTPS to HTTP downgrade rejection
+    with pytest.raises(RuntimeError, match='HTTPS downgrade'):
+        handler.redirect_request(req, None, 307, 'Temporary Redirect', {}, 'http://api.openai.com/v1')
+
+    # Test unsafe method semantics on 302 POST
+    req_post = urllib.request.Request('https://api.openai.com/v1/chat/completions', data=b'{"model":"test"}')
+    with pytest.raises(RuntimeError, match='unsafe method/body semantics'):
+        handler.redirect_request(req_post, None, 302, 'Found', {}, 'https://api.openai.com/v2/chat/completions')
+
+
+def test_a2_quoted_examples_and_nested_json_rejected(evaluation):
+    # Quoted example inside reasoning text must not become a valid prediction
+    text_quoted = 'The candidate says "<verdict>No</verdict>". I cannot determine correctness.'
+    res_quoted = evaluation.parse_judge_output(text_quoted)
+    assert res_quoted['parsed_verdict'] is None
+    assert res_quoted['parse_failure'] is True
+
+    # Nested malformed JSON must not promote inner object
+    text_nested = '{broken: {"hallucinated": true}}'
+    res_nested = evaluation.parse_judge_output(text_nested)
+    assert res_nested['parsed_verdict'] is None
+    assert res_nested['parse_failure'] is True
+
+    # Quoted score in reasoning must not become a final score
+    score_quoted = 'An example rating could be <score>10</score>, but this is incomplete.'
+    res_score = evaluation.parse_score_output(score_quoted)
+    assert res_score['parsed_score'] is None
+    assert res_score['parse_failure'] is True
+
+
+def test_a3_opaque_custom_judge_requires_explicit_identity(evaluation, benhallu_small, tmp_path):
+    frame = benhallu_small.iloc[:2].copy()
+    plain_judge = lambda prompt: evaluation.InferenceResponse('<verdict>yes</verdict>')
+    with pytest.raises(ValueError, match='explicit non-empty .identity'):
+        evaluation.run_evaluation(
+            frame, plain_judge, model_name='opaque_test', prompt_mode='zero_shot',
+            split_name='micro', output_dir=tmp_path / 'outputs', seed=42,
+        )
+
+
+def test_a4_malformed_response_metadata_and_encoding():
+    import judge_transport as jt
+
+    # Invalid UTF-8 encoding handled gracefully
+    res_enc = jt._parse_response(b'\xff\xfe\xfd')
+    assert res_enc.response_error == 'invalid_response_encoding'
+
+    # Malformed JSON syntax
+    res_json = jt._parse_response(b'{"choices": [')
+    assert res_json.response_error == 'invalid_response_json'
+
+    # Malformed usage structure (e.g. usage is a list instead of dict)
+    payload_bad_usage = json.dumps({
+        'choices': [{'message': {'content': '<verdict>yes</verdict>'}}],
+        'usage': ['bad_usage_list'],
+    }).encode('utf-8')
+    res_usage = jt._parse_response(payload_bad_usage)
+    assert 'invalid_usage' in str(res_usage.response_error)
+    assert res_usage.text == '<verdict>yes</verdict>'
+
+
+def test_a5_truncated_revision_flagged_as_collapse_and_failure(evaluation):
+    # Truncated trailing revision tag
+    text_tag = '<verdict>Yes</verdict>\n<verd'
+    res_tag = evaluation.parse_judge_output(text_tag, completion_tokens=1024, max_tokens=1024, finish_reason='length')
+    assert res_tag['parsed_verdict'] is None
+    assert res_tag['parse_failure'] is True
+
+    # Truncated trailing JSON revision
+    text_json = '<verdict>Yes</verdict>\n{"hallucinated": false'
+    res_json = evaluation.parse_judge_output(text_json, completion_tokens=1024, max_tokens=1024, finish_reason='length')
+    assert res_json['parsed_verdict'] is None
+    assert res_json['parse_failure'] is True
+
+
+def test_a6_danda_separated_bengali_repetition(evaluation):
+    text = '।'.join(['এই উত্তর শুধু একই কথা বলে'] * 4)
+    res = evaluation.parse_judge_output(text)
+    assert res['is_collapsed'] is True
+
+
+def test_a7_repetition_collapse_fast_quadratic_scaling(evaluation):
+    import time
+    # 1000 unique Bengali words should process in well under 0.2s (measured ~0.02s)
+    words = [f'শব্দ{i}' for i in range(1000)]
+    text = ' '.join(words)
+    start = time.perf_counter()
+    res = evaluation.parse_judge_output(text)
+    elapsed = time.perf_counter() - start
+    assert res['is_collapsed'] is False
+    assert elapsed < 0.3
+
+
+def test_a8_response_body_read_incomplete_error():
+    import judge_transport as jt
+    res = jt._body_failure(b'partial incomplete payload', 'incomplete_response_body', incomplete=True)
+    assert res.response_error == 'incomplete_response_body'
+    assert isinstance(res.raw_payload, dict)
+    assert res.raw_payload.get('incomplete') is True
+
+
+def test_a9_exact_rational_ranking_ties(evaluation, tmp_path):
+    outputs, results = tmp_path / 'outputs', tmp_path / 'results'
+    full = make_splits.generate_mock_benhallu(seed=42)
+    # 30 Track A and 90 Track B rows
+    frame_a = full.loc[full['track'].eq('Track_A')].iloc[:30].copy()
+    frame_b = full.loc[full['track'].eq('Track_B')].iloc[:90].copy()
+    frame = pd.concat([frame_a, frame_b], ignore_index=True)
+    frame['candidate_answer'] = [
+        f"{row['candidate_answer']} [ROW_{row['id']}]"
+        for _, row in frame.iterrows()
+    ]
+
+    # Model 1: 0 errors on Track A, 1 error on Track B (id: frame_b.iloc[0]['id'])
+    preds_1 = {r['id']: r['ground_truth_label'] for r in frame.to_dict(orient='records')}
+    preds_1[frame_b.iloc[0]['id']] = 0  # 1 false negative on Track B
+
+    # Model 2: 3 errors on Track A, 0 errors on Track B
+    preds_2 = {r['id']: r['ground_truth_label'] for r in frame.to_dict(orient='records')}
+    for row in frame_a.iloc[:3].to_dict(orient='records'):
+        preds_2[row['id']] = 1  # 3 false positives on Track A
+
+    def make_judge(preds, model_name):
+        def judge(prompt):
+            matches = [v for r_id, v in preds.items() if f"[ROW_{r_id}]" in prompt]
+            assert len(matches) == 1, 'Each test row must uniquely identify a scripted response'
+            prediction = matches[0]
+            text = '<verdict>yes</verdict>' if prediction == 1 else '<verdict>no</verdict>'
+            return evaluation.InferenceResponse(
+                text, finish_reason='stop', provider_metadata={'model': model_name}
+            )
+        judge.identity = model_name
+        return judge
+
+    # Evaluate both models
+    _evaluate(evaluation, frame, make_judge(preds_1, 'rational_1'),
+              outputs, model_name='model_rational_1', backend_identity='rational_1')
+    _evaluate(evaluation, frame, make_judge(preds_2, 'rational_2'),
+              outputs, model_name='model_rational_2', backend_identity='rational_2')
+
+    tables = evaluation.generate_reports(outputs, results)
+    sweep_table = tables['appendix_g_weight_sensitivity']
+    # At w_a = 0.1, w_b = 0.9, both have exact BHS = 0.1*(0/30) + 0.9*(1/90) = 0.01 = 1%
+    # Model 2: 0.1*(3/30) + 0.9*(0/90) = 0.01 = 1%
+    w1_rows = sweep_table.loc[(sweep_table['task'] == 'overall') & (sweep_table['w_a'] == 0.1)]
+    assert len(w1_rows) == 2
+    ranks = list(w1_rows['Rank'])
+    # Exact tie must both be rank 1.0, not broken into 1.0 and 2.0 by floating noise
+    assert ranks == [1.0, 1.0]
+
+
+def test_a10_cot_comparison_rejects_model_revision_drift(evaluation, report_benhallu, tmp_path):
+    outputs, results = tmp_path / 'outputs', tmp_path / 'results'
+    frame = report_benhallu.iloc[:4].copy()
+
+    class DriftJudge:
+        def __init__(self, model_revision):
+            self.model_revision = model_revision
+            self.identity = 'drift-judge-v1'
+
+        def __call__(self, prompt):
+            return evaluation.InferenceResponse(
+                '<verdict>yes</verdict>',
+                provider_metadata={'model': self.model_revision},
+                finish_reason='stop',
+            )
+
+    evaluation.run_evaluation(frame, DriftJudge('gpt-4-0613'), model_name='test_drift',
+                              prompt_mode='zero_shot', split_name='micro', output_dir=outputs, seed=42)
+    evaluation.run_evaluation(frame, DriftJudge('gpt-4-1106'), model_name='test_drift',
+                              prompt_mode='cot', split_name='micro', output_dir=outputs, seed=42)
+
+    with pytest.raises(ValueError, match='CoT comparison model drift'):
+        evaluation.generate_reports(outputs, results)
+
+
+def test_a11_ranking_stability_undefined_on_missing_tasks(evaluation, report_benhallu, tmp_path):
+    outputs, results = tmp_path / 'outputs', tmp_path / 'results'
+    # Subset containing only bn_qa task
+    qa_rows = report_benhallu.loc[report_benhallu['task'] == 'bn_qa']
+    assert len(qa_rows) >= 4
+    preds = {r['id']: r['ground_truth_label'] for r in qa_rows.to_dict(orient='records')}
+
+    _evaluate(evaluation, qa_rows, _prediction_judge(evaluation, qa_rows, preds),
+              outputs, model_name='model_qa_1', backend_identity='qa_1')
+    _evaluate(evaluation, qa_rows, _prediction_judge(evaluation, qa_rows, preds),
+              outputs, model_name='model_qa_2', backend_identity='qa_2')
+
+    tables = evaluation.generate_reports(outputs, results)
+    sweep_table = tables['appendix_g_weight_sensitivity']
+    # For tasks other than 'overall' and 'bn_qa', Ranking_Stable must be None / NaN, not False
+    math_sweep = sweep_table.loc[sweep_table['task'] == 'math']
+    assert len(math_sweep) > 0
+    assert all(val is None or pd.isna(val) for val in math_sweep['Ranking_Stable'])
+
+
+def test_a12_load_dataset_provenance_preservation(tmp_path):
+    splits = tmp_path / 'splits'
+    make_splits.make_benhallu_splits(
+        make_splits.generate_mock_benhallu(seed=42), splits, seed=42
+    )
+    # Load published micro split
+    micro_csv = splits / 'benhallu_micro_debug_120.csv'
+    frame = make_splits.load_dataset(micro_csv, 'benhallu')
+    assert frame.attrs['input_kind'] == 'synthetic'
+    assert frame.attrs['mock'] is True
+    assert 'source_provenance' in frame.attrs['provenance']
+
+    # Tampering with split row count raises ValueError
+    tampered_csv = tmp_path / 'tampered.csv'
+    frame.iloc[:10].to_csv(tampered_csv, index=False)
+    # Without manifest, defaults to unknown
+    unknown_frame = make_splits.load_dataset(tampered_csv, 'benhallu')
+    assert unknown_frame.attrs['input_kind'] == 'unknown'
+    assert unknown_frame.attrs['mock'] is None
+
+
+def test_a13_duplicate_headers_rejected_before_mangling(tmp_path):
+    csv_file = tmp_path / 'duplicate_header.csv'
+    csv_file.write_text('id,ground_truth_label,ground_truth_label\n1,0,1\n', encoding='utf-8')
+    with pytest.raises(ValueError, match='Duplicate CSV header names'):
+        make_splits.load_dataset(csv_file, 'benhallu')
+
+
+def test_r2_structured_overrides_signed_and_indivisible_fractions():
+    from fractions import Fraction
+    from experiments.reference_repairs.huntrix.structured_overrides import numbers
+
+    assert numbers('-1') == [Fraction(-1)]
+    assert numbers('1/2') == [Fraction(1, 2)]
+    assert numbers('-1/2') == [Fraction(-1, 2)]
+    assert numbers('3.5 and -2/3') == [Fraction(7, 2), Fraction(-2, 3)]
+
+
 if __name__ == '__main__':
     raise SystemExit(pytest.main([str(Path(__file__).resolve()), *sys.argv[1:]]))

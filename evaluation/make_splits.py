@@ -471,6 +471,75 @@ def _load_raw(root: Path, type_mapping: Mapping[str, str] | str | os.PathLike | 
     return _carry_attrs(result, result)
 
 
+def _load_provenance(path: Path, mode: str, row_count: int) -> tuple[str, dict | None, dict | None]:
+    """Inspect directory manifest or sidecar to recover input kind and inherited provenance.
+
+    Returns (kind, inherited_provenance, metadata_source_dict).
+    If no verified manifest or sidecar applies, returns ('unknown', None, None).
+    """
+    manifest_path = path.parent / 'manifest.json'
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError):
+            return 'unknown', None, None
+        if isinstance(manifest, dict) and manifest.get('mode') == mode:
+            outputs = manifest.get('outputs', {})
+            matching_output = None
+            if isinstance(outputs, dict):
+                for out in outputs.values():
+                    if isinstance(out, dict) and out.get('filename') == path.name:
+                        matching_output = out
+                        break
+            is_canonical_input = False
+            if matching_output is None:
+                canonical_sha = manifest.get('input', {}).get('canonical_csv_sha256')
+                if canonical_sha and canonical_sha == _sha256(path):
+                    is_canonical_input = True
+
+            if matching_output is not None or is_canonical_input:
+                if matching_output is not None:
+                    if matching_output.get('rows') != row_count:
+                        raise ValueError(
+                            f'Manifest {manifest_path} row count mismatch for {path.name}: '
+                            f'expected {matching_output.get("rows")}, got {row_count}.'
+                        )
+                    if matching_output.get('sha256') != _sha256(path):
+                        raise ValueError(
+                            f'Manifest {manifest_path} sha256 mismatch for {path.name}.'
+                        )
+                kind = manifest.get('input_kind')
+                if kind is None:
+                    input_prov = manifest.get('input', {}).get('provenance', {})
+                    if isinstance(input_prov, dict) and 'input_kind' in input_prov:
+                        kind = input_prov['input_kind']
+                    elif manifest.get('mock') is True:
+                        kind = 'synthetic'
+                    elif manifest.get('mock') is False and isinstance(input_prov, dict) and input_prov.get('kind') == 'raw_directory':
+                        kind = 'real'
+                    else:
+                        kind = 'unknown'
+                kind = _input_kind(kind)
+                inherited = manifest.get('input', {}).get('provenance')
+                metadata_source = {'path': str(manifest_path.resolve()), 'sha256': _sha256(manifest_path)}
+                return kind, inherited, metadata_source
+
+    sidecar = path.with_suffix('.meta.json')
+    if sidecar.is_file():
+        try:
+            meta = json.loads(sidecar.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError):
+            return 'unknown', None, None
+        if isinstance(meta, dict):
+            kind = meta.get('input_kind')
+            if kind in INPUT_KINDS:
+                inherited = meta.get('provenance')
+                metadata_source = {'path': str(sidecar.resolve()), 'sha256': _sha256(sidecar)}
+                return kind, inherited, metadata_source
+
+    return 'unknown', None, None
+
+
 def load_dataset(path: str | os.PathLike, mode: str,
                  type_mapping: Mapping[str, str] | str | os.PathLike | None = None,
                  *, input_kind: str | None = None) -> pd.DataFrame:
@@ -641,9 +710,12 @@ def _publish(frame: pd.DataFrame, output_dir: str | os.PathLike, seed: int,
         for index, left in enumerate(ids) for right in list(ids)[index + 1:]
     }
     canonical_bytes = frame.to_csv(index=False, lineterminator='\n').encode('utf-8')
+    input_kind = frame.attrs.get('input_kind', 'synthetic' if frame.attrs.get('mock') is True else 'unknown')
     manifest = {
         'schema_version': 2, 'mode': mode, 'seed': seed,
-        'mock': bool(frame.attrs.get('mock', False)), 'evaluation_only': True,
+        'input_kind': input_kind,
+        'mock': _mock_flag(input_kind),
+        'evaluation_only': True,
         'overlap_policy': 'Intentional evaluation subset overlap; NOT train/test partitions. Row-level, not source-grouped.',
         'dependencies': {
             'python': platform.python_version(), 'numpy': np.__version__,

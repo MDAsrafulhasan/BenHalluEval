@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from fractions import Fraction
 import hashlib
 import json
 import logging
@@ -49,9 +50,6 @@ import sys
 import tempfile
 import time
 import unicodedata
-import urllib.error
-import urllib.request
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -60,10 +58,17 @@ import numpy as np
 import pandas as pd
 import sklearn
 
+if str(Path(__file__).parent.resolve()) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).parent.resolve()))
+
 from make_splits import (
     ANCHOR_DIALECTS, BENHALLU_COLUMNS, DIALECT_COLUMNS, HALLUCINATION_TYPES,
     TASKS, load_dataset, validate_benhallu, validate_dialect,
 )
+from judge_parsing import (
+    parse_judge_output, parse_score_output, _has_repetition, _words,
+)
+from judge_transport import OpenAICompatibleJudge, InferenceResponse
 
 TEMPERATURE = 0.0
 MAX_TOKENS = 1024
@@ -126,8 +131,6 @@ def compute_critical_bias_sensitivity(performance_by_dialect: dict[str, float],
     return float(performance_by_dialect[anchor] - performance_by_dialect['Chittagong'])
 
 
-# Normalize Unicode, not Bengali characters to ASCII: combining vowel marks
-# are part of Bengali words and must not be destroyed by a generic \\w regex.
 def _normalize(text: str) -> str:
     if not isinstance(text, str):
         raise ValueError('Judge response must be a string.')
@@ -135,107 +138,8 @@ def _normalize(text: str) -> str:
 
 
 def _repetition_collapse(text: str) -> bool:
-    words = []
-    for token in text.split():
-        word = ''.join(c for c in token if unicodedata.category(c)[0] in 'LNM')
-        if word:
-            words.append(word)
-    # Exhaustive finite search: all starting positions and all lengths >= 5.
-    # Four consecutive copies are necessary; nonconsecutive recurrences do not count.
-    for n in range(5, len(words) // 4 + 1):
-        for start in range(len(words) - 4 * n + 1):
-            block = words[start:start + n]
-            if all(words[start + k * n:start + (k + 1) * n] == block for k in (1, 2, 3)):
-                return True
-    return False
-
-
-def _tag_status(text: str, tag: str) -> tuple[bool, bool]:
-    """Return (present, balanced); a truncated revision invalidates earlier tags."""
-    opened, present = False, False
-    for match in re.finditer(fr'</?{tag}\s*>', text):
-        present = True
-        closing = match.group().startswith('</')
-        if closing != opened:
-            return True, False
-        opened = not closing
-    return present, not opened
-
-
-def _collapse(text: str, tag: str, completion_tokens: int | None,
-              max_tokens: int, finish_reason: str | None) -> bool:
-    if not isinstance(max_tokens, int) or max_tokens < 1:
-        raise ValueError('max_tokens must be a positive integer.')
-    if completion_tokens is not None and (
-            not isinstance(completion_tokens, int) or isinstance(completion_tokens, bool) or completion_tokens < 0):
-        raise ValueError('completion_tokens must be a nonnegative integer or None.')
-    exhausted = (completion_tokens is not None and completion_tokens >= max_tokens) or finish_reason == 'length'
-    present, balanced = _tag_status(text, tag)
-    return _repetition_collapse(text) or bool(exhausted and not (present and balanced))
-
-
-def _binary(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return int(value)
-    if not isinstance(value, str):
-        return None
-    value = _normalize(value).strip().strip(' .!।\t\r\n')
-    return {'yes': 1, 'true': 1, 'হ্যাঁ': 1, 'no': 0, 'false': 0, 'না': 0}.get(value)
-
-
-def _score(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
-        return None
-    text = str(value).strip().strip('।')
-    text = ''.join(str(unicodedata.digit(c)) if c.isdigit() else c for c in text)
-    if not re.fullmatch(r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)', text):
-        return None
-    score = float(text)
-    return score if math.isfinite(score) and 0 <= score <= 10 else None
-
-
-def _extract(text: str, tag: str, json_key: str, final_label: str,
-             convert: Callable) -> int | float | None:
-    values: list[Any] = []
-    if not _tag_status(text, tag)[1]:
-        return None
-    for match in re.finditer(fr'<{tag}\s*>(.*?)</{tag}\s*>', text, re.DOTALL):
-        values.append(convert(match.group(1)))
-    for match in re.finditer(fr'(?im)(?<!\w){final_label}\s*[:：]\s*(.*?)\s*$', text):
-        values.append(convert(match.group(1)))
-    # raw_decode handles JSON embedded in prose/code fences and preserves duplicate
-    # keys, allowing contradictory repeated JSON keys to be rejected rather than lost.
-    decoder = json.JSONDecoder(object_pairs_hook=lambda pairs: pairs)
-    for match in re.finditer(r'\{', text):
-        try:
-            obj, _ = decoder.raw_decode(text, match.start())
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, list):
-            for key, value in obj:
-                if key == json_key:
-                    values.append(convert(value))
-    if not values:
-        return convert(text.strip())
-    if any(value is None for value in values) or len(set(values)) != 1:
-        return None
-    return values[0]
-
-
-def parse_judge_output(text: str, completion_tokens: int | None = None,
-                       max_tokens: int = MAX_TOKENS, finish_reason: str | None = None) -> dict:
-    text = _normalize(text)
-    verdict = _extract(text, 'verdict', 'hallucinated', r'final\s+verdict', _binary)
-    return {'parsed_verdict': verdict, 'is_collapsed': _collapse(text, 'verdict', completion_tokens, max_tokens, finish_reason),
-            'parse_failure': verdict is None}
-
-
-def parse_score_output(text: str, completion_tokens: int | None = None,
-                       max_tokens: int = MAX_TOKENS, finish_reason: str | None = None) -> dict:
-    text = _normalize(text)
-    score = _extract(text, 'score', 'score', r'final\s+score', _score)
-    return {'parsed_score': score, 'is_collapsed': _collapse(text, 'score', completion_tokens, max_tokens, finish_reason),
-            'parse_failure': score is None}
+    words, _ = _words(text)
+    return _has_repetition(words)
 
 
 def build_prompt(row: dict, mode: str, prompt_mode: str) -> str:
@@ -260,15 +164,6 @@ def build_prompt(row: dict, mode: str, prompt_mode: str) -> str:
     return instruction + boundary + reasoning + output + json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
-@dataclass(frozen=True)
-class InferenceResponse:
-    text: str
-    prompt_tokens: int | None = None
-    completion_tokens: int | None = None
-    finish_reason: str | None = None
-    provider_metadata: dict = field(default_factory=dict)
-
-
 class MockJudge:
     """Explicit synthetic judges for plumbing tests, never research baselines."""
     def __init__(self, kind: str = 'always_yes'):
@@ -285,59 +180,6 @@ class MockJudge:
                 'mock_score': '<score>7.5</score>'}[self.kind]
         # No tokenizer was invoked: token counts are unknown, not fabricated estimates.
         return InferenceResponse(text, finish_reason='stop', provider_metadata={'synthetic': True})
-
-
-class OpenAICompatibleJudge:
-    def __init__(self, model_name: str, base_url: str = 'https://api.openai.com/v1',
-                 api_key_env: str = 'OPENAI_API_KEY', seed: int = SEED,
-                 timeout: float = 120, retries: int = 2):
-        if not base_url.startswith(('http://', 'https://')):
-            raise ValueError('base_url must be an HTTP(S) URL.')
-        if timeout <= 0 or retries < 0:
-            raise ValueError('timeout must be positive and retries nonnegative.')
-        self.model_name, self.url = model_name, base_url.rstrip('/') + '/chat/completions'
-        self.api_key, self.seed = os.environ.get(api_key_env), seed
-        self.timeout, self.retries = timeout, retries
-        self.identity = f'openai-compatible:{self.url}:{model_name}'
-
-    def __call__(self, prompt: str) -> InferenceResponse:
-        payload = {'model': self.model_name, 'messages': [{'role': 'user', 'content': prompt}],
-                   'temperature': TEMPERATURE, 'max_tokens': MAX_TOKENS, 'seed': self.seed, 'stream': False}
-        headers = {'Content-Type': 'application/json'}
-        if self.api_key:
-            headers['Authorization'] = 'Bearer ' + self.api_key
-        request = urllib.request.Request(self.url, data=json.dumps(payload).encode('utf-8'), headers=headers)
-        data = None
-        for attempt in range(self.retries + 1):
-            try:
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    data = json.load(response)
-                break
-            except urllib.error.HTTPError as exc:
-                detail = exc.read().decode('utf-8', errors='replace')[:2000]
-                if attempt == self.retries or exc.code not in (429, 500, 502, 503, 504):
-                    raise RuntimeError(f'Inference HTTP {exc.code}: {detail}') from exc
-                retry_after = exc.headers.get('Retry-After', '')
-                delay = min(float(retry_after), 60) if retry_after.isdecimal() else 2 ** attempt
-                LOG.warning('Transient HTTP %s; retry %s in %ss.', exc.code, attempt + 1, delay)
-                time.sleep(delay)
-            except (urllib.error.URLError, TimeoutError) as exc:
-                if attempt == self.retries:
-                    raise RuntimeError(f'Inference connection failed: {exc}') from exc
-                time.sleep(2 ** attempt)
-        if not isinstance(data, dict):
-            raise RuntimeError('Endpoint returned a non-object response.')
-        try:
-            choice = data['choices'][0]
-            text = choice['message']['content']
-            usage = data.get('usage') or {}
-            if not isinstance(text, str):
-                raise ValueError('No text completion (possible refusal).')
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise RuntimeError('Endpoint returned an invalid chat-completions response.') from exc
-        return InferenceResponse(text, usage.get('prompt_tokens'), usage.get('completion_tokens'),
-                                 choice.get('finish_reason'),
-                                 {key: data.get(key) for key in ('id', 'model', 'system_fingerprint', 'created')})
 
 
 def _json(value: Any) -> str:
@@ -515,12 +357,21 @@ def run_evaluation(frame: pd.DataFrame, judge: Callable[[str], InferenceResponse
         raise ValueError('Cannot evaluate an empty split.')
     columns = BENHALLU_COLUMNS if mode == 'benhallu' else DIALECT_COLUMNS
     dataset = frame.sort_values('id').loc[:, list(columns)].to_dict(orient='records')
+    if backend_identity is not None and str(backend_identity).strip():
+        judge_identity = str(backend_identity).strip()
+    elif hasattr(judge, 'identity') and isinstance(judge.identity, str) and judge.identity.strip():
+        judge_identity = judge.identity.strip()
+    else:
+        raise ValueError(
+            'Custom judge must provide an explicit non-empty .identity string attribute or '
+            'backend_identity parameter to prevent silent checkpoint sharing across differing judges.'
+        )
     source_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     config = {'protocol_version': PROTOCOL_VERSION, 'source_sha256': source_hash,
               'dataset_sha256': _digest(dataset), 'expected_rows': len(dataset),
               'model_name': model_name, 'prompt_mode': prompt_mode, 'split_name': split_name,
               'mode': mode, 'temperature': TEMPERATURE, 'max_tokens': MAX_TOKENS, 'seed': seed,
-              'backend_identity': backend_identity or getattr(judge, 'identity', type(judge).__qualname__),
+              'backend_identity': judge_identity,
               'dependencies': {'python': platform.python_version(), 'numpy': np.__version__,
                                'pandas': pd.__version__, 'sklearn': sklearn.__version__}}
     config_hash = _digest(config)
@@ -599,14 +450,28 @@ def _group_bhs(rows: list[dict], w_a: float = .5, w_b: float = .5) -> dict:
     a = [r for r in rows if r['track'] == 'Track_A']
     b = [r for r in rows if r['track'] == 'Track_B']
     # Failed parses have no binary verdict. Explicit operational penalty, not imputation.
-    fpr = _rate([r['parse_failure'] or r['parsed_verdict'] == 1 for r in a])
-    fnr = _rate([r['parse_failure'] or r['parsed_verdict'] == 0 for r in b])
-    valid_a, valid_b = [r['parsed_verdict'] for r in a if not r['parse_failure']], [r['parsed_verdict'] for r in b if not r['parse_failure']]
+    err_a = sum(1 for r in a if r['parse_failure'] or r['parsed_verdict'] == 1)
+    err_b = sum(1 for r in b if r['parse_failure'] or r['parsed_verdict'] == 0)
+    fpr = err_a / len(a) if a else float('nan')
+    fnr = err_b / len(b) if b else float('nan')
+    valid_a = [r['parsed_verdict'] for r in a if not r['parse_failure']]
+    valid_b = [r['parsed_verdict'] for r in b if not r['parse_failure']]
     valid = compute_benhallu_score(valid_a, valid_b, w_a, w_b)['BHS'] if valid_a and valid_b else float('nan')
+    bhs = (w_a * fpr + w_b * fnr) * 100 if (a and b) else float('nan')
+
+    exact_bhs = None
+    if a and b and isinstance(w_a, (int, float)) and isinstance(w_b, (int, float)):
+        wa_int = round(w_a * 10)
+        wb_int = round(w_b * 10)
+        if wa_int + wb_int == 10 and 0 <= wa_int <= 10:
+            exact_bhs = (Fraction(wa_int * err_a, 10 * len(a)) +
+                         Fraction(wb_int * err_b, 10 * len(b))) * 100
+
     return {'N': len(rows), 'Track_A_N': len(a), 'Track_B_N': len(b),
             'Track_A_FPR (%)': fpr * 100, 'Track_B_FNR (%)': fnr * 100,
-            'BHS': (w_a * fpr + w_b * fnr) * 100,
-            'BenHalluScore (%)': (w_a * fpr + w_b * fnr) * 100,
+            'BHS': bhs,
+            'BenHalluScore (%)': bhs,
+            'exact_bhs': exact_bhs,
             'Collapse_N': sum(r['is_collapsed'] for r in rows),
             'Collapse_Rate (%)': _rate([r['is_collapsed'] for r in rows]) * 100,
             'Parse_Failure_N': sum(r['parse_failure'] for r in rows),
@@ -676,7 +541,8 @@ def generate_reports(output_dir: str | Path = 'outputs', results_dir: str | Path
                 for i in range(1, 10):
                     wa, wb = i / 10, (10 - i) / 10
                     weighted = _group_bhs(subset, wa, wb)
-                    sweep.append({**identity, 'task': task, **status, 'w_a': wa, 'w_b': wb, 'BHS': weighted['BHS']})
+                    sweep.append({**identity, 'task': task, **status, 'w_a': wa, 'w_b': wb,
+                                  'BHS': weighted['BHS'], 'exact_bhs': weighted['exact_bhs']})
             for kind in HALLUCINATION_TYPES:
                 subset = [r for r in rows if r['track'] == 'Track_B' and r['hallucination_type'] == kind]
                 granular.append({**identity, **status, 'hallucination_type': kind, 'Track_B_N': len(subset),
@@ -712,6 +578,18 @@ def generate_reports(output_dir: str | Path = 'outputs', results_dir: str | Path
         # Never combine different endpoints, seeds or locked decoding settings.
         if any(config[k] != cot_config[k] for k in ('backend_identity', 'seed', 'temperature', 'max_tokens', 'source_sha256', 'protocol_version', 'dependencies')):
             raise ValueError('CoT comparison requires identical backend, seed and protocol.')
+        zs_models = {r.get('provider_metadata', {}).get('model') for r in rows if isinstance(r.get('provider_metadata'), dict)} - {None}
+        cot_models = {r.get('provider_metadata', {}).get('model') for r in cot_rows if isinstance(r.get('provider_metadata'), dict)} - {None}
+        if zs_models and cot_models and zs_models != cot_models:
+            raise ValueError(
+                f'CoT comparison model drift for {model} on {split}: zero-shot returned '
+                f'{sorted(zs_models)} but cot returned {sorted(cot_models)}. '
+                'Refusing unqualified prompt ablation.'
+            )
+        if len(zs_models) > 1:
+            raise ValueError(f'Resolved model drifted within zero-shot run for {model}: {sorted(zs_models)}')
+        if len(cot_models) > 1:
+            raise ValueError(f'Resolved model drifted within cot run for {model}: {sorted(cot_models)}')
         zs, cot_by_id = {r['id']: r for r in rows}, {r['id']: r for r in cot_rows}
         paired = sorted(zs.keys() & cot_by_id.keys())
         for task in ('overall', *TASKS):
@@ -735,8 +613,15 @@ def generate_reports(output_dir: str | Path = 'outputs', results_dir: str | Path
                           and comparison['Complete'].all())
             if not comparable:
                 continue
-            ranked = comparison.groupby(group, dropna=False)['BHS'].rank(method='min', ascending=True)
+            has_exact = 'exact_bhs' in comparison.columns and comparison['exact_bhs'].notna().all()
+            rank_col = 'exact_bhs' if has_exact else 'BHS'
+            ranked = comparison.groupby(group, dropna=False)[rank_col].rank(method='min', ascending=True)
             sweep_frame.loc[indices, 'Rank'] = ranked
+
+            if comparison['BHS'].isna().any() or ranked.isna().any():
+                sweep_frame.loc[indices, 'Ranking_Stable'] = None
+                continue
+
             ranking_maps = []
             for _, values in sweep_frame.loc[indices].groupby('w_a'):
                 ranking_maps.append(dict(zip(zip(values['model_name'], values['prompt_mode']), values['Rank'])))
@@ -746,7 +631,7 @@ def generate_reports(output_dir: str | Path = 'outputs', results_dir: str | Path
         'table1_overall_and_per_task_bhs': (overall, ['model_name', 'prompt_mode', 'split_name', 'task', 'BHS', 'Track_A_FPR (%)', 'Track_B_FNR (%)', 'BenHalluScore (%)', 'Collapse_Rate (%)', 'Avg_Latency_ms']),
         'table2_granular_hallucination_types': (granular, ['model_name', 'prompt_mode', 'split_name', 'hallucination_type', 'Track_B_N', 'Track_B_FNR (%)']),
         'table3_cot_delta_ablation': (delta, ['model_name', 'split_name', 'task', 'Paired_N', 'BHS_ZeroShot', 'BHS_CoT', 'Delta_BHS']),
-        'appendix_g_weight_sensitivity': (sweep_frame, ['model_name', 'prompt_mode', 'split_name', 'task', 'w_a', 'w_b', 'BHS', 'Rank', 'Ranking_Stable']),
+        'appendix_g_weight_sensitivity': (sweep_frame.drop(columns=['exact_bhs'], errors='ignore'), ['model_name', 'prompt_mode', 'split_name', 'task', 'w_a', 'w_b', 'BHS', 'Rank', 'Ranking_Stable']),
         'table4_dialect_ccc': (dialect, ['model_name', 'prompt_mode', 'split_name', 'dialect', 'N', 'Paired_N', 'CCC']),
         'table5_dialect_cbs': (cbs, ['model_name', 'prompt_mode', 'split_name', 'anchor', 'metric', 'CBS']),
     }

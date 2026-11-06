@@ -11,11 +11,20 @@ from pathlib import Path
 
 import pandas as pd
 
-from datathon_utils import OUTPUT_DIR, load_sample, load_test, normalize_bn
+try:
+    from datathon_utils import OUTPUT_DIR, load_sample, load_test, normalize_bn
+except ImportError:
+    from experiments.reference_repairs.huntrix.datathon_utils import (
+        OUTPUT_DIR, load_sample, load_test, normalize_bn
+    )
 
 
 BN_TO_ASCII = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
 NUMBER_RE = re.compile(r"(?<!\d)(\d+(?:\.\d+)?)(?!\d)")
+
+
+# Indivisible fractions and signed numbers regex (R2 repair)
+SIGNED_TOKEN_RE = re.compile(r"(?<![\w/.])([+-]?(?:\d+/\d+|\d+(?:\.\d+)?|\.\d+))(?![\w/.])")
 
 
 @dataclass(frozen=True)
@@ -37,14 +46,10 @@ def numbers(text: str) -> list[Fraction]:
         .replace("–", "-")
         .replace("—", "-")
     )
-    # Fractions must be parsed as a unit and retain their sign. The older
-    # digit-only scan read ``-1/2`` as the unrelated candidates 1 and 2.
-    for token in re.findall(r"(?<![\d/])([+-]?\d+/\d+)(?![\d/])", normalized):
-        try:
-            values.append(Fraction(token))
-        except (ValueError, ZeroDivisionError):
-            continue
-    for token in NUMBER_RE.findall(normalized):
+    # Fractions must be parsed as a unit and retain their sign (R2).
+    # Tokens are extracted as indivisible units so '-1/2' does not leak 1 and 2,
+    # and '-1' does not match positive 1.
+    for token in SIGNED_TOKEN_RE.findall(normalized):
         try:
             values.append(Fraction(token))
         except (ValueError, ZeroDivisionError):
