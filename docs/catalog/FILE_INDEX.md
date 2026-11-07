@@ -1,8 +1,8 @@
 # Workspace file index
 
-Generated UTC: 2026-11-06T19:39:30.511030+00:00
+Generated UTC: 2026-11-06T20:56:56.163453+00:00
 
-Files: 333; bytes: 41069421.
+Files: 338; bytes: 41109553.
 
 - Metadata only: no code execution, notebook outputs, or data row values.
 - Titles use filenames or the first Markdown heading, not README claims; slide counts, versions, and other README drift are not inferred.
@@ -366,14 +366,16 @@ Files: 333; bytes: 41069421.
 
 ### sourcecode
 
-- [evaluation/eval.py](../../evaluation/eval.py) — eval.py; 47301 bytes
+- [evaluation/eval.py](../../evaluation/eval.py) — eval.py; 47426 bytes
 - [evaluation/judge_parsing.py](../../evaluation/judge_parsing.py) — judge_parsing.py; 10821 bytes
-- [evaluation/judge_transport.py](../../evaluation/judge_transport.py) — judge_transport.py; 12746 bytes
-- [evaluation/make_splits.py](../../evaluation/make_splits.py) — make_splits.py; 51032 bytes
+- [evaluation/judge_transport.py](../../evaluation/judge_transport.py) — judge_transport.py; 13919 bytes
+- [evaluation/make_splits.py](../../evaluation/make_splits.py) — make_splits.py; 54629 bytes
+- [evaluation/openrouter_config.py](../../evaluation/openrouter_config.py) — openrouter_config.py; 5315 bytes
+- [evaluation/run_openrouter.py](../../evaluation/run_openrouter.py) — run_openrouter.py; 7711 bytes
 
 ### test
 
-- [evaluation/test_pipeline.py](../../evaluation/test_pipeline.py) — test_pipeline.py; 62263 bytes
+- [evaluation/test_pipeline.py](../../evaluation/test_pipeline.py) — test_pipeline.py; 79608 bytes
 
 ## Workspace
 
@@ -390,7 +392,7 @@ Files: 333; bytes: 41069421.
 - [data/README.md](../../data/README.md) — Data lifecycle; 771 bytes
 - [data/raw/dialect/README.md](../../data/raw/dialect/README.md) — Real dialect benchmark not yet supplied; 826 bytes
 - [data/splits/README.md](../../data/splits/README.md) — Generated evaluation subsets; 799 bytes
-- [docs/AUDIT_REPORT.md](../../docs/AUDIT_REPORT.md) — Evaluation Pipeline and Optimization Audit Report; 16366 bytes
+- [docs/AUDIT_REPORT.md](../../docs/AUDIT_REPORT.md) — Evaluation Pipeline and Optimization Audit Report; 17117 bytes
 - [docs/CODE_REVIEW.md](../../docs/CODE_REVIEW.md) — Code review: evaluation, workspace tools, and preserved research; 18396 bytes
 - [docs/DATA_GUIDE.md](../../docs/DATA_GUIDE.md) — Data guide and integration boundaries; 7893 bytes
 - [docs/ORGANIZATION.md](../../docs/ORGANIZATION.md) — Workspace organization record; 3593 bytes
@@ -399,6 +401,9 @@ Files: 333; bytes: 41069421.
 - [environment/README.md](../../environment/README.md) — Evaluation environment; 1983 bytes
 - [experiments/README.md](../../experiments/README.md) — Experiment records; 1028 bytes
 - [experiments/TEMPLATE.md](../../experiments/TEMPLATE.md) — Experiment record; 3250 bytes
+- [experiments/reference_repairs/README.md](../../experiments/reference_repairs/README.md) — Reference Repairs and Adaptations; 1786 bytes
+- [experiments/reference_repairs/cuet/README.md](../../experiments/reference_repairs/cuet/README.md) — CUET_AL_Masaar Reference Adaptation; 962 bytes
+- [experiments/reference_repairs/huntrix/README.md](../../experiments/reference_repairs/huntrix/README.md) — Huntrix Reference Adaptation & Repairs; 1218 bytes
 - [outputs/README.md](../../outputs/README.md) — Raw inference outputs; 948 bytes
 - [references/README.md](../../references/README.md) — Preserved research references; 2050 bytes
 - [results/README.md](../../results/README.md) — Derived evaluation reports; 727 bytes
@@ -419,14 +424,14 @@ Files: 333; bytes: 41069421.
 ### notebook
 
 - [experiments/reference_repairs/cuet/CUET_AL_Masaar_inference_notebook.repaired.ipynb](../../experiments/reference_repairs/cuet/CUET_AL_Masaar_inference_notebook.repaired.ipynb) — CUET_AL_Masaar_inference_notebook.repaired.ipynb; 102806 bytes
-- [experiments/reference_repairs/huntrix/best_gemma12_qat_submission.repaired.ipynb](../../experiments/reference_repairs/huntrix/best_gemma12_qat_submission.repaired.ipynb) — Bengali Hallucination Detection - Gemma 12B QAT GGUF Submission; 16476 bytes
+- [experiments/reference_repairs/huntrix/best_gemma12_qat_submission.repaired.ipynb](../../experiments/reference_repairs/huntrix/best_gemma12_qat_submission.repaired.ipynb) — Bengali Hallucination Detection - Gemma 12B QAT GGUF Submission; 16459 bytes
 
 ### sourcecode
 
 - [experiments/pipeline_hardening/original_evaluation/eval.py](../../experiments/pipeline_hardening/original_evaluation/eval.py) — eval.py; 47301 bytes
 - [experiments/pipeline_hardening/original_evaluation/make_splits.py](../../experiments/pipeline_hardening/original_evaluation/make_splits.py) — make_splits.py; 46925 bytes
 - [experiments/reference_repairs/huntrix/datathon_utils.py](../../experiments/reference_repairs/huntrix/datathon_utils.py) — datathon_utils.py; 7693 bytes
-- [experiments/reference_repairs/huntrix/structured_overrides.py](../../experiments/reference_repairs/huntrix/structured_overrides.py) — structured_overrides.py; 34011 bytes
+- [experiments/reference_repairs/huntrix/structured_overrides.py](../../experiments/reference_repairs/huntrix/structured_overrides.py) — structured_overrides.py; 34177 bytes
 - [tools/workspace.py](../../tools/workspace.py) — workspace.py; 18156 bytes
 
 ### test

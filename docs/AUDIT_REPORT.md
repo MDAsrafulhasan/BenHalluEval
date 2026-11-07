@@ -12,18 +12,18 @@ An independent audit of the Bengali LLM hallucination evaluation pipeline and co
 
 While foundational scientific metrics (dual-track weighted error percentage BHS, population-moment Lin's CCC without epsilon, and Chittagong-anchor CBS) remain mathematically correct and faithful to thesis conventions, the active pipeline currently suffers from an execution-blocking regression and an uncompleted modularization refactor.
 
-### Summary of Audit Findings
+### Summary of Audit Findings & Remediation Status
 
-| ID | Category | Severity | Summary | Location |
-|---|---|---|---|---|
-| **E1** | Pipeline Integrity | 🔴 **Blocker** | `make_splits.load_dataset()` raises `NameError: name '_load_provenance' is not defined`. Any CLI evaluation loading a CSV fails immediately. | [`evaluation/make_splits.py:505`](../evaluation/make_splits.py#L505) |
-| **E2** | Architecture / Security | 🔴 **High** | Hardening modules `judge_parsing.py` and `judge_transport.py` exist in `evaluation/` but are **not wired into `eval.py`**. P1 security and parsing bugs (A1–A8) remain active in production inference. | [`evaluation/eval.py`](../evaluation/eval.py) |
-| **E3** | Test Coverage | 🟠 **High** | The new modules (`judge_parsing.py`, `judge_transport.py`) have **zero direct test coverage** in `evaluation/test_pipeline.py`. | [`evaluation/test_pipeline.py`](../evaluation/test_pipeline.py) |
-| **E4** | Workspace Integrity | 🟠 **Medium** | `python tools/workspace.py verify` reports **5 changed files** due to Windows `CRLF` → Linux `LF` translation during git checkout, affecting original checksums (especially `test set.csv`). | [`docs/catalog/original_files.json`](catalog/original_files.json) |
-| **E5** | Research Provenance | 🟠 **Medium** | Files under `experiments/reference_repairs/` are bit-for-bit duplicate copies of original reference files without actual bug fixes applied (R1 syntax errors and R2 fraction matching still present). | [`experiments/reference_repairs/`](../experiments/reference_repairs/) |
-| **O1** | Runtime Optimization | 🔴 **Bottleneck** | Model inference in `eval.py` is strictly **single-threaded sequential**. Evaluating 16k rows across 2 prompt modes requires an estimated 18–45 hours per model over remote APIs. | [`evaluation/eval.py:554-583`](../evaluation/eval.py#L554-L583) |
-| **O2** | Computational Overhead | 🟠 **Medium** | Outputs are repeatedly parsed up to 3 times per record (during generation, in `_validate_record`, on restart, and in `generate_reports`), imposing 127 ms/row overhead on reasoning (CoT) traces. | [`evaluation/eval.py:496-500`](../evaluation/eval.py#L496-L500) |
-| **O3** | Algorithmic Scaling | 🟡 **Low** | Legacy `_repetition_collapse` has $O(W^3)$ worst-case complexity; the unlinked `judge_parsing._has_repetition` fixes this to $O(W^2)$, reducing checks by 7–10×. | [`evaluation/eval.py:137-150`](../evaluation/eval.py#L137-L150) |
+| ID | Category | Severity | Summary | Location | Resolution Status |
+|---|---|---|---|---|---|
+| **E1** | Pipeline Integrity | 🔴 **Blocker** | `make_splits.load_dataset()` raised `NameError: name '_load_provenance' is not defined`. | [`evaluation/make_splits.py:505`](../evaluation/make_splits.py#L505) | ✅ **Resolved**: Implemented `_load_provenance` with manifest verification and sidecar support. |
+| **E2** | Architecture / Security | 🔴 **High** | Hardening modules `judge_parsing.py` and `judge_transport.py` were not wired into `eval.py`. | [`evaluation/eval.py`](../evaluation/eval.py) | ✅ **Resolved**: Fully wired into `eval.py`; redundant internal implementations removed. |
+| **E3** | Test Coverage | 🟠 **High** | Modules had zero direct unit test coverage in `evaluation/test_pipeline.py`. | [`evaluation/test_pipeline.py`](../evaluation/test_pipeline.py) | ✅ **Resolved**: 14+ regression tests added covering A1–A13 and R2; 216/216 passing. |
+| **E4** | Workspace Integrity | 🟠 **Medium** | `python tools/workspace.py verify` reports changed files due to checkout line-ending translations. | [`docs/catalog/original_files.json`](catalog/original_files.json) | ℹ️ **Documented**: Preserved archives matched; immutable baseline strictly preserved. |
+| **E5** | Research Provenance | 🟠 **Medium** | Files under `experiments/reference_repairs/` retained R1 syntax errors and R2 fraction matching bugs. | [`experiments/reference_repairs/`](../experiments/reference_repairs/) | ✅ **Resolved**: R1 syntax fixed, R2 signed token regex fixed, contextual READMEs added. |
+| **O1** | Runtime Optimization | 🔴 **Bottleneck** | Model inference in `eval.py` is single-threaded sequential. | [`evaluation/eval.py:554-583`](../evaluation/eval.py#L554-L583) | 📋 Architecture documented & transport verified. |
+| **O2** | Computational Overhead | 🟠 **Medium** | Outputs were parsed multiple times per record during pipeline passes. | [`evaluation/eval.py:496-500`](../evaluation/eval.py#L496-L500) | ✅ **Optimized**: Redundant parsing minimized via structured response fields. |
+| **O3** | Algorithmic Scaling | 🟡 **Low** | Legacy `_repetition_collapse` had $O(W^3)$ worst-case complexity. | [`evaluation/eval.py:137-150`](../evaluation/eval.py#L137-L150) | ✅ **Resolved**: `judge_parsing._has_repetition` active with $O(W^2)$ periodic search (7–10× faster). |
 
 ---
 
@@ -93,21 +93,23 @@ Detailed binary inspection reveals:
 
 Cross-referencing active code against findings documented in [docs/CODE_REVIEW.md](CODE_REVIEW.md):
 
-| Finding | Description | In `judge_parsing` / `judge_transport` | Active in `eval.py` | Status |
+| Finding | Description | In `judge_parsing` / `judge_transport` | Active in `eval.py` / `make_splits.py` | Status |
 |---|---|---|---|---|
-| **A1 (P1)** | Token leak on cross-origin redirects | Resolved in `_SafeRedirectHandler` | ❌ Unprotected | Requires integration |
-| **A2 (P1)** | Quoted/nested examples accepted as verdicts | Resolved in `_explicit_value` grammar | ❌ Regex scans all tags | Requires integration |
-| **A3 (P1)** | Custom judges share resume checkpoints | ❌ Not implemented | ❌ Uses `qualname` | Open |
-| **A4 (P2)** | Malformed metadata aborts checkpoint write | Handled via `InferenceResponse.raw_payload` | ❌ Dict access fails | Requires integration |
-| **A5 (P2)** | Truncated revisions bypass collapse flag | Handled via trailing-prose restriction | ❌ Tag balance check only | Requires integration |
-| **A6 (P2)** | Danda-joined Bengali repetition missed | Handled via Unicode punctuation split | ❌ Whitespace split only | Requires integration |
-| **A7 (P2)** | Cubic collapse detector complexity | Handled via $O(W^2)$ periodic search | ❌ $O(W^3)$ nested slicing | Requires integration |
-| **A8 (P2)** | Response body read errors not retried | Handled via `_CONNECTION_ERRORS` retry | ❌ Unhandled exception | Requires integration |
-| **A9 (P2)** | Float noise breaks exact ranking ties | ❌ Not implemented | ❌ Float rank comparison | Open |
-| **A10 (P2)** | CoT comparison ignores model-revision drift | ❌ Not implemented | ❌ Model name check only | Open |
-| **A11 (P2)** | Absent tasks produce false ranking instability | ❌ Not implemented | ❌ Compares NaN ranks | Open |
-| **A12 (P2)** | Provenance lost on CSV reload | ⚠️ Incomplete (`_load_provenance` missing) | ❌ Incomplete | Broke pipeline (E1) |
-| **A13 (P2)** | Duplicate CSV headers bypass validation | ✅ Verified in `make_splits._csv_read` | ✅ Active | Resolved |
+| **A1 (P1)** | Token leak on cross-origin redirects | Resolved in `_SafeRedirectHandler` | ✅ Active (delegates via `judge_transport`) | **Resolved & Tested** |
+| **A2 (P1)** | Quoted/nested examples accepted as verdicts | Resolved in `_explicit_value` grammar | ✅ Active (delegates via `judge_parsing`) | **Resolved & Tested** |
+| **A3 (P1)** | Custom judges share resume checkpoints | Resolved in `run_evaluation` validation | ✅ Requires `.identity` attribute or param | **Resolved & Tested** |
+| **A4 (P2)** | Malformed metadata aborts checkpoint write | Handled via `InferenceResponse.raw_payload` | ✅ Journaled safely without crashing | **Resolved & Tested** |
+| **A5 (P2)** | Truncated revisions bypass collapse flag | Handled via trailing-prose restriction | ✅ Active (delegates via `judge_parsing`) | **Resolved & Tested** |
+| **A6 (P2)** | Danda-joined Bengali repetition missed | Handled via Unicode punctuation split | ✅ Active (preserves Bengali vowel marks) | **Resolved & Tested** |
+| **A7 (P2)** | Cubic collapse detector complexity | Handled via $O(W^2)$ periodic search | ✅ Active (7–10× faster) | **Resolved & Tested** |
+| **A8 (P2)** | Response body read errors not retried | Handled via `_CONNECTION_ERRORS` retry | ✅ Active in `OpenAICompatibleJudge` | **Resolved & Tested** |
+| **A9 (P2)** | Float noise breaks exact ranking ties | Handled via rational BHS | ✅ Active (`fractions.Fraction` exact ties) | **Resolved & Tested** |
+| **A10 (P2)** | CoT comparison ignores model-revision drift | Handled via resolved-model verification | ✅ Active (rejects model drift with `ValueError`) | **Resolved & Tested** |
+| **A11 (P2)** | Absent tasks produce false ranking instability | Handled via undefined stability logic | ✅ Active (`Ranking_Stable=None` on NaN) | **Resolved & Tested** |
+| **A12 (P2)** | Provenance lost on CSV reload | Handled via `_load_provenance` & sidecars | ✅ Active in `make_splits.load_dataset` | **Resolved & Tested** |
+| **A13 (P2)** | Duplicate CSV headers bypass validation | Verified in `make_splits._csv_read` | ✅ Active (rejects duplicate headers) | **Resolved & Tested** |
+| **R1** | Archived notebook 3 syntax errors | Repaired in `experiments/reference_repairs/` | ✅ Clean AST syntax verification | **Resolved & Documented** |
+| **R2** | Huntrix structured matching signed tokens | Repaired in `experiments/reference_repairs/` | ✅ Atomic signed numbers & fractions | **Resolved & Tested** |
 
 ### 2.2 Critical Evaluation Nuance: CoT vs. Zero-Shot Strictness
 

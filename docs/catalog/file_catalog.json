@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-11-06T19:39:30.511030+00:00",
+  "generated_utc": "2026-11-06T20:56:56.163453+00:00",
   "notes": [
     "Metadata only: no code execution, notebook outputs, or data row values.",
     "Titles use filenames or the first Markdown heading, not README claims; slide counts, versions, and other README drift are not inferred.",
@@ -214,8 +214,8 @@
       "group": "Workspace",
       "kind": "documentation",
       "title": "Evaluation Pipeline and Optimization Audit Report",
-      "bytes": 16366,
-      "sha256": "690ee94627f396408d5bd2b7ec24f53c2d0766e63f00b436a32bb727c108e325",
+      "bytes": 17117,
+      "sha256": "a7664804a824428a0c0e410f894d2c1e94724eec3a1c2228c91cfe25eeeada24",
       "symbols": []
     },
     {
@@ -295,8 +295,8 @@
       "group": "Thesis_evaluation",
       "kind": "sourcecode",
       "title": "eval.py",
-      "bytes": 47301,
-      "sha256": "85e1e8a35a2ffb8b508082811f41fe3378d9fb4da73eb01cdbbbd248099390e9",
+      "bytes": 47426,
+      "sha256": "1f7373b06f32de25bd18dd0cabae374140f4ab2e671d67cd0b8e1d0679f9a0b2",
       "symbols": [
         "_array",
         "_weights",
@@ -306,17 +306,9 @@
         "compute_critical_bias_sensitivity",
         "_normalize",
         "_repetition_collapse",
-        "_tag_status",
-        "_collapse",
-        "_binary",
-        "_score",
-        "_extract",
-        "parse_judge_output",
-        "parse_score_output",
+        "select_sample",
         "build_prompt",
-        "InferenceResponse",
         "MockJudge",
-        "OpenAICompatibleJudge",
         "_json",
         "_digest",
         "_slug",
@@ -360,8 +352,8 @@
       "group": "Thesis_evaluation",
       "kind": "sourcecode",
       "title": "judge_transport.py",
-      "bytes": 12746,
-      "sha256": "032f31887abb554e922c3ec60ca06013e9006ab8edd97c6a06fe119e8ff21f75",
+      "bytes": 13919,
+      "sha256": "d2ada5904f001c9c7ab9de9c7227b761c8537d5b66dec94bc0b084755b40d817",
       "symbols": [
         "InferenceResponse",
         "_origin",
@@ -382,8 +374,8 @@
       "group": "Thesis_evaluation",
       "kind": "sourcecode",
       "title": "make_splits.py",
-      "bytes": 51032,
-      "sha256": "f769723fd245e86abf012a5991a86f9321eef1740951281df7b72da1cc191c4e",
+      "bytes": 54629,
+      "sha256": "9892c5ff812a01e1353cd6fe4237309c0b8f1cf98b87eafd30fc3e3459e75df8",
       "symbols": [
         "_seed",
         "_require_columns",
@@ -404,6 +396,7 @@
         "_mapping",
         "_raw_ids",
         "_load_raw",
+        "_load_provenance",
         "load_dataset",
         "_sort",
         "_composite",
@@ -422,12 +415,35 @@
       ]
     },
     {
+      "path": "evaluation/openrouter_config.py",
+      "group": "Thesis_evaluation",
+      "kind": "sourcecode",
+      "title": "openrouter_config.py",
+      "bytes": 5315,
+      "sha256": "73a398d93190951875f703defd65b1578d09878dd976d727060b42a7a0c2d7ef",
+      "symbols": [
+        "get_openrouter_judge",
+        "sample_dataset"
+      ]
+    },
+    {
+      "path": "evaluation/run_openrouter.py",
+      "group": "Thesis_evaluation",
+      "kind": "sourcecode",
+      "title": "run_openrouter.py",
+      "bytes": 7711,
+      "sha256": "c51b359228506f5d583fffcba22cb45dbd3eff6b584a0ef9e700ddbae661f348",
+      "symbols": [
+        "main"
+      ]
+    },
+    {
       "path": "evaluation/test_pipeline.py",
       "group": "Thesis_evaluation",
       "kind": "test",
       "title": "test_pipeline.py",
-      "bytes": 62263,
-      "sha256": "9bd9fba63ca299b863994318a5a27e98e8cc958536c4e125da339eaf4c68a490",
+      "bytes": 79608,
+      "sha256": "af93e549016852b5fd573bdb7e4eb9da088fd0f9cb106e06bcdb816222b0dc5c",
       "symbols": [
         "benhallu_full",
         "dialect_full",
@@ -503,7 +519,25 @@
         "test_openai_transport_transient_http_retry_recovers_with_bounded_delay",
         "test_openai_transport_transient_retry_exhaustion_is_bounded",
         "test_generate_reports_different_seeds_withhold_rank_and_stability",
-        "test_splits_rare_stratum_omission_is_actionable_error"
+        "test_splits_rare_stratum_omission_is_actionable_error",
+        "test_a1_safe_redirect_handler_blocks_cross_origin_and_downgrade",
+        "test_a2_quoted_examples_and_nested_json_rejected",
+        "test_a3_opaque_custom_judge_requires_explicit_identity",
+        "test_a4_malformed_response_metadata_and_encoding",
+        "test_a5_truncated_revision_flagged_as_collapse_and_failure",
+        "test_a6_danda_separated_bengali_repetition",
+        "test_a7_repetition_collapse_fast_quadratic_scaling",
+        "test_a8_response_body_read_incomplete_error",
+        "test_a9_exact_rational_ranking_ties",
+        "test_a10_cot_comparison_rejects_model_revision_drift",
+        "test_a11_ranking_stability_undefined_on_missing_tasks",
+        "test_a12_load_dataset_provenance_preservation",
+        "test_a13_duplicate_headers_rejected_before_mangling",
+        "test_r2_structured_overrides_signed_and_indivisible_fractions",
+        "test_select_sample_stratified_proportions",
+        "test_select_sample_head_and_random",
+        "test_openrouter_judge_transport_headers_and_params",
+        "test_openrouter_cli_sampling_and_defaults"
       ]
     },
     {
@@ -693,6 +727,15 @@
       ]
     },
     {
+      "path": "experiments/reference_repairs/README.md",
+      "group": "Workspace",
+      "kind": "documentation",
+      "title": "Reference Repairs and Adaptations",
+      "bytes": 1786,
+      "sha256": "fd753a4c8a57a6aa5fa66d6ee7744918ea364781394f24e4b2dac739040ce2d0",
+      "symbols": []
+    },
+    {
       "path": "experiments/reference_repairs/cuet/CUET_AL_Masaar_inference_notebook.repaired.ipynb",
       "group": "Workspace",
       "kind": "notebook",
@@ -809,6 +852,15 @@
       "symbols": []
     },
     {
+      "path": "experiments/reference_repairs/cuet/README.md",
+      "group": "Workspace",
+      "kind": "documentation",
+      "title": "CUET_AL_Masaar Reference Adaptation",
+      "bytes": 962,
+      "sha256": "96f525ddbf7474a5c4ef7832b8a759173a9d7ad4bcd0e97bc66353305caf3bfe",
+      "symbols": []
+    },
+    {
       "path": "experiments/reference_repairs/huntrix/LICENSE",
       "group": "Workspace",
       "kind": "license",
@@ -818,15 +870,33 @@
       "symbols": []
     },
     {
+      "path": "experiments/reference_repairs/huntrix/README.md",
+      "group": "Workspace",
+      "kind": "documentation",
+      "title": "Huntrix Reference Adaptation & Repairs",
+      "bytes": 1218,
+      "sha256": "2fc767fe71b9c13632d8873c3d328bcd9e7f5587a384feab6c4925f945f89d17",
+      "symbols": []
+    },
+    {
       "path": "experiments/reference_repairs/huntrix/best_gemma12_qat_submission.repaired.ipynb",
       "group": "Workspace",
       "kind": "notebook",
       "title": "Bengali Hallucination Detection - Gemma 12B QAT GGUF Submission",
-      "bytes": 16476,
-      "sha256": "3ce2d564b3a44f68ad5dc71b09e08a61c70e1a701d86891437eaefedfe4af510",
+      "bytes": 16459,
+      "sha256": "1bb9796168abb86eae617eb071dc5cb527292009abdc8266ffaf32ab218ababe",
       "symbols": [
+        "clean_context",
+        "clean_text",
+        "normalize_bn",
+        "response_in_context",
+        "parse_label",
+        "prepare_frame",
+        "make_prompt",
         "wait_for_server",
         "start_llama_server",
+        "call_gemma",
+        "run_gemma",
         "apply_context_rule"
       ]
     },
@@ -862,8 +932,8 @@
       "group": "Workspace",
       "kind": "sourcecode",
       "title": "structured_overrides.py",
-      "bytes": 34011,
-      "sha256": "bb630f4f8920835d7c812fc698598f7a9d2c811f2763d4a393dec345229099f0",
+      "bytes": 34177,
+      "sha256": "20d7306cd09fdb4dc8eacf119652cfdde2519ff2a6e5943ebea26e06fde73df4",
       "symbols": [
         "Solved",
         "ascii_text",
